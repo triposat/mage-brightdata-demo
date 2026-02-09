@@ -1,0 +1,20 @@
+# Screenshots Folder
+
+Add the following screenshots from your Mage AI instance:
+
+1. `mage-pipeline-editor.png` - Visual pipeline editor with connected blocks
+2. `mage-home.png` - Mage AI dashboard
+3. `create-data-loader.png` - Adding a new data loader block
+4. `transformer-preview.png` - Data preview showing transformed output
+5. `complete-pipeline.png` - Complete pipeline with all blocks
+6. `pipeline-variables.png` - Variables configuration
+7. `pipeline-running.png` - Pipeline execution in progress
+8. `pipeline-complete.png` - Successful run with green blocks
+9. `schedule-trigger.png` - Trigger configuration UI
+10. `data-preview.png` - Sample scraped product data
+
+To capture screenshots:
+1. Run `docker-compose up -d`
+2. Open http://localhost:6789
+3. Navigate to the amazon_product_discovery pipeline
+4. Capture each screen as listed above
