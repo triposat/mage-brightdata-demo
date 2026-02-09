@@ -1,0 +1,10 @@
+project_name: mage_brightdata_demo
+variables_dir: ~/.mage_data
+
+features:
+  automatic_kernel_cleanup: true
+  local_timezone: UTC
+
+help:
+  slack_url: https://www.mage.ai/chat
+project_uuid: 3282febd01fe4dfc8031bab7fb70a379

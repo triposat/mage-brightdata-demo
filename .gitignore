@@ -1,0 +1,42 @@
+# Environment
+.env
+*.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+ENV/
+
+# Mage
+mage_project/.file_versions/
+mage_project/.variables/
+mage_project/.cache/
+mage_project/.operation_history/
+mage_project/.ssh_tunnel/
+mage_project/.logs/
+mage_project/output/
+**/.variables/
+*.db
+*.parquet
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test files
+test_brightdata.py

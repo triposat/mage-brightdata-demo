@@ -1,0 +1,63 @@
+blocks:
+  - uuid: ecommerce_scraper
+    type: data_loader
+    name: Scrape E-commerce Products
+    upstream_blocks: []
+    configuration:
+      file_path: data_loaders/ecommerce_scraper.py
+
+  - uuid: clean_product_data
+    type: transformer
+    name: Clean Product Data
+    upstream_blocks:
+      - ecommerce_scraper
+    configuration:
+      file_path: transformers/clean_product_data.py
+
+  - uuid: aggregate_stats
+    type: transformer
+    name: Aggregate Statistics
+    upstream_blocks:
+      - clean_product_data
+    configuration:
+      file_path: transformers/aggregate_stats.py
+
+  - uuid: export_to_postgres
+    type: data_exporter
+    name: Export to PostgreSQL
+    upstream_blocks:
+      - clean_product_data
+    configuration:
+      file_path: data_exporters/export_to_postgres.py
+
+  - uuid: export_to_csv
+    type: data_exporter
+    name: Export to CSV
+    upstream_blocks:
+      - aggregate_stats
+    configuration:
+      file_path: data_exporters/export_to_csv.py
+
+name: ecommerce_scraping
+type: python
+uuid: ecommerce_scraping
+
+description: |
+  E-commerce product scraping pipeline using Bright Data.
+
+  This pipeline:
+  1. Scrapes product data from e-commerce websites via Bright Data proxy
+  2. Cleans and transforms the raw scraped data
+  3. Aggregates statistics by domain
+  4. Exports to PostgreSQL and CSV
+
+variables:
+  urls:
+    - https://www.example.com/product/1
+    - https://www.example.com/product/2
+  table_name: products
+
+tags:
+  - scraping
+  - ecommerce
+  - bright-data

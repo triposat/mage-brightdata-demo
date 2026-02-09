@@ -1,0 +1,46 @@
+services:
+  mage:
+    image: mageai/mageai:latest
+    container_name: mage-brightdata
+    command: mage start mage_project
+    ports:
+      - "6789:6789"
+    volumes:
+      - ./mage_project:/home/src/mage_project
+    environment:
+      - MAGE_DATA_DIR=/home/src/mage_project
+      # Disable authentication for local development
+      - REQUIRE_USER_AUTHENTICATION=0
+      # Bright Data - Residential Proxy
+      - BRIGHT_DATA_CUSTOMER_ID=${BRIGHT_DATA_CUSTOMER_ID}
+      - BRIGHT_DATA_ZONE=${BRIGHT_DATA_ZONE}
+      - BRIGHT_DATA_PASSWORD=${BRIGHT_DATA_PASSWORD}
+      - BRIGHT_DATA_PROXY_HOST=${BRIGHT_DATA_PROXY_HOST}
+      - BRIGHT_DATA_PROXY_PORT=${BRIGHT_DATA_PROXY_PORT}
+      # Bright Data - Web Unlocker API
+      - BRIGHT_DATA_API_TOKEN=${BRIGHT_DATA_API_TOKEN}
+      - BRIGHT_DATA_UNLOCKER_ZONE=${BRIGHT_DATA_UNLOCKER_ZONE}
+      # PostgreSQL
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: mage-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
