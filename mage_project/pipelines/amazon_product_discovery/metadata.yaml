@@ -1,4 +1,5 @@
 blocks:
+# 1. DATA LOADER: Fetch products from Bright Data
 - all_upstream_blocks_executed: true
   color: null
   configuration:
@@ -16,18 +17,14 @@ blocks:
   type: data_loader
   upstream_blocks: []
   uuid: amazon_product_discovery
+
+# 2. TRANSFORMER: Clean and enrich data
 - all_upstream_blocks_executed: true
   color: null
   configuration:
     file_path: transformers/process_amazon_products.py
   downstream_blocks:
-  - export_amazon_to_postgres
-  - export_amazon_to_csv
-  - price_by_keyword_chart
-  - price_tier_distribution
-  - rating_by_keyword_chart
-  - process_amazon_products_bar_chart_h2
-  - process_amazon_products_histogram_b3
+  - detect_price_changes
   executor_config: null
   executor_type: local_python
   has_callback: false
@@ -40,6 +37,50 @@ blocks:
   upstream_blocks:
   - amazon_product_discovery
   uuid: process_amazon_products
+
+# 3. TRANSFORMER: Detect price changes vs historical data
+- all_upstream_blocks_executed: true
+  color: null
+  configuration:
+    file_path: transformers/detect_price_changes.py
+  downstream_blocks:
+  - check_data_quality
+  executor_config: null
+  executor_type: local_python
+  has_callback: false
+  language: python
+  name: detect_price_changes
+  retry_config: null
+  status: not_executed
+  timeout: null
+  type: transformer
+  upstream_blocks:
+  - process_amazon_products
+  uuid: detect_price_changes
+
+# 4. CONDITIONAL: Check data quality before export
+- all_upstream_blocks_executed: true
+  color: null
+  configuration:
+    file_path: conditionals/check_data_quality.py
+  downstream_blocks:
+  - export_amazon_to_postgres
+  - export_amazon_to_csv
+  - export_alerts
+  executor_config: null
+  executor_type: local_python
+  has_callback: false
+  language: python
+  name: check_data_quality
+  retry_config: null
+  status: not_executed
+  timeout: null
+  type: conditional
+  upstream_blocks:
+  - detect_price_changes
+  uuid: check_data_quality
+
+# 5. EXPORTER: Save to PostgreSQL
 - all_upstream_blocks_executed: true
   color: null
   configuration:
@@ -55,8 +96,10 @@ blocks:
   timeout: null
   type: data_exporter
   upstream_blocks:
-  - process_amazon_products
+  - check_data_quality
   uuid: export_amazon_to_postgres
+
+# 6. EXPORTER: Save to CSV
 - all_upstream_blocks_executed: true
   color: null
   configuration:
@@ -72,83 +115,53 @@ blocks:
   timeout: null
   type: data_exporter
   upstream_blocks:
-  - process_amazon_products
+  - check_data_quality
   uuid: export_amazon_to_csv
+
+# 7. EXPORTER: Send alerts for price changes
 - all_upstream_blocks_executed: true
   color: null
   configuration:
-    chart_type: bar_chart
-    group_by:
-    - search_keyword
-    metrics:
-    - aggregation: average
-      column: best_price
-    x: search_keyword
-    y: best_price
+    file_path: data_exporters/export_alerts.py
   downstream_blocks: []
   executor_config: null
   executor_type: local_python
   has_callback: false
   language: python
-  name: price_by_keyword_chart
+  name: export_alerts
   retry_config: null
   status: not_executed
   timeout: null
-  type: chart
+  type: data_exporter
   upstream_blocks:
-  - process_amazon_products
-  uuid: price_by_keyword_chart
-- all_upstream_blocks_executed: true
-  color: null
-  configuration:
-    chart_type: pie_chart
-    group_by:
-    - price_tier
-    x: price_tier
-  downstream_blocks: []
-  executor_config: null
-  executor_type: local_python
-  has_callback: false
-  language: python
-  name: price_tier_distribution
-  retry_config: null
-  status: not_executed
-  timeout: null
-  type: chart
-  upstream_blocks:
-  - process_amazon_products
-  uuid: price_tier_distribution
-- all_upstream_blocks_executed: true
-  color: null
-  configuration:
-    chart_type: bar_chart
-    group_by:
-    - search_keyword
-    metrics:
-    - aggregation: average
-      column: rating
-    x: search_keyword
-    y: rating
-  downstream_blocks: []
-  executor_config: null
-  executor_type: local_python
-  has_callback: false
-  language: python
-  name: rating_by_keyword_chart
-  retry_config: null
-  status: not_executed
-  timeout: null
-  type: chart
-  upstream_blocks:
-  - process_amazon_products
-  uuid: rating_by_keyword_chart
+  - check_data_quality
+  uuid: export_alerts
+
+# Pipeline settings
 cache_block_output_in_memory: false
 callbacks: []
 concurrency_config: {}
-conditionals: []
+conditionals:
+- check_data_quality
 created_at: '2026-02-09 11:48:06.240011+00:00'
 data_integration: null
-description: null
+description: |
+  Amazon Product Discovery Pipeline
+
+  This pipeline demonstrates enterprise-grade web scraping by:
+  1. Fetching products from Bright Data's Amazon API
+  2. Cleaning and enriching the data
+  3. Detecting price changes vs historical data
+  4. Validating data quality before export
+  5. Exporting to PostgreSQL and CSV
+  6. Sending alerts for significant price changes
+
+  Features used:
+  - Bright Data Web Scraper API
+  - Mage AI conditionals (data quality gates)
+  - Mage AI transformers (price change detection)
+  - Multiple export destinations
+  - Configurable pipeline variables
 executor_config: {}
 executor_count: 1
 executor_type: null
@@ -161,53 +174,33 @@ run_pipeline_in_one_process: false
 settings:
   triggers: null
 spark_config: {}
-tags: []
+tags:
+- brightdata
+- amazon
+- price-tracking
+- web-scraping
 type: python
 uuid: amazon_product_discovery
 variables:
+  # Search keywords - easily configurable!
   keywords:
   - laptop stand
   - mechanical keyboard
   - monitor light
+
+  # Products per keyword
   limit_per_keyword: 25
+
+  # Price change threshold for alerts (percentage)
+  price_change_threshold: 10
+
+  # Data quality thresholds
+  min_products: 10
+  min_price_rate: 0.5
+  min_rating_rate: 0.5
+
+  # Alert settings
+  alert_on_any_change: false
+
 variables_dir: /home/src/mage_project
-widgets:
-- all_upstream_blocks_executed: true
-  color: null
-  configuration:
-    chart_style: vertical
-    chart_type: bar chart
-    x: x
-    y: y
-  downstream_blocks: []
-  executor_config: null
-  executor_type: local_python
-  has_callback: false
-  language: python
-  name: process_amazon_products_bar chart_h2
-  retry_config: null
-  status: executed
-  timeout: null
-  type: chart
-  upstream_blocks:
-  - process_amazon_products
-  uuid: process_amazon_products_bar_chart_h2
-- all_upstream_blocks_executed: true
-  color: null
-  configuration:
-    buckets: 10
-    chart_type: histogram
-    x: x
-  downstream_blocks: []
-  executor_config: null
-  executor_type: local_python
-  has_callback: false
-  language: python
-  name: process_amazon_products_histogram_b3
-  retry_config: null
-  status: executed
-  timeout: null
-  type: chart
-  upstream_blocks:
-  - process_amazon_products
-  uuid: process_amazon_products_histogram_b3
+widgets: []

@@ -1,26 +1,72 @@
-# Mage AI + Bright Data: Amazon Product Scraping Pipeline
+# Mage AI + Bright Data: Enterprise Web Scraping Pipelines
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Mage AI](https://img.shields.io/badge/Mage%20AI-Pipeline-purple)](https://www.mage.ai/)
 [![Bright Data](https://img.shields.io/badge/Bright%20Data-Web%20Scraping-blue)](https://brightdata.com/)
 
-A production-ready data pipeline demonstrating enterprise-grade web scraping by combining **Mage AI** (data pipeline orchestration) with **Bright Data** (web scraping infrastructure).
+Production-ready data pipelines demonstrating enterprise-grade web scraping by combining **Mage AI** (data pipeline orchestration) with **Bright Data** (web scraping infrastructure).
 
-<!-- SCREENSHOT: Add pipeline visualization here -->
-![Pipeline Overview](screenshots/complete-pipeline.png)
+## What This Demo Shows
 
-## What This Demo Does
+This isn't just a "hello world" - it's a **real enterprise demo** showcasing:
 
-- Scrapes Amazon products by keyword using Bright Data's Web Scraper API
-- Transforms and enriches data (price tiers, discounts, ratings)
-- Exports to PostgreSQL for historical tracking
-- Exports to CSV for data sharing
-- Runs on a schedule for automated price monitoring
+| Feature | What It Does |
+|---------|--------------|
+| **Price Change Detection** | Compares new prices against historical data, flags significant changes |
+| **Data Quality Gates** | Conditional blocks that stop pipeline if data quality is poor |
+| **Alert Notifications** | Slack/webhook notifications for price drops and issues |
+| **Multiple Data Sources** | Amazon API + Web Unlocker for custom sites |
+| **Historical Tracking** | PostgreSQL storage with timestamps for trend analysis |
+| **Configurable Pipelines** | Change keywords, thresholds via variables (no code changes) |
+
+## Pipelines
+
+### 1. Amazon Product Discovery
+Scrapes Amazon products using Bright Data's Web Scraper API.
+
+```
+┌─────────────┐    ┌──────────────┐    ┌─────────────┐    ┌──────────────┐
+│ Data Loader │───▶│ Transformer  │───▶│ Price Change│───▶│ Data Quality │
+│ (Bright     │    │ (Clean &     │    │ Detection   │    │ Check        │
+│  Data API)  │    │  Enrich)     │    │             │    │ (Conditional)│
+└─────────────┘    └──────────────┘    └─────────────┘    └──────┬───────┘
+                                                                  │
+                            ┌─────────────────────────────────────┼─────────────────┐
+                            │                                     │                 │
+                            ▼                                     ▼                 ▼
+                     ┌─────────────┐                       ┌─────────────┐   ┌─────────────┐
+                     │ PostgreSQL  │                       │ CSV Export  │   │   Alerts    │
+                     │ Export      │                       │             │   │ (Slack/     │
+                     └─────────────┘                       └─────────────┘   │  Webhook)   │
+                                                                             └─────────────┘
+```
+
+**Features:**
+- Searches by keyword, returns 50+ data fields per product
+- Calculates discounts, price tiers, rating categories
+- Detects price changes vs last scrape (alerts on >10% change)
+- Data quality gate blocks export if data is poor
+- Exports to PostgreSQL + CSV + sends alerts
+
+### 2. Custom Web Scraper
+Scrapes ANY website using Bright Data's Web Unlocker.
+
+```
+┌─────────────────┐    ┌─────────────┐
+│ Web Unlocker    │───▶│ CSV Export  │
+│ (Any URL)       │    │             │
+└─────────────────┘    └─────────────┘
+```
+
+**Features:**
+- Scrapes any URL (not just Amazon)
+- Automatic CAPTCHA solving
+- Anti-bot bypass
+- Custom data extraction
 
 ## Quick Start
 
 ### Prerequisites
-
 - Docker & Docker Compose
 - [Bright Data account](https://brightdata.com) with API token
 
@@ -46,189 +92,137 @@ open http://localhost:6789
 
 1. Navigate to **Pipelines** → **amazon_product_discovery**
 2. Click **Run pipeline once**
-3. Watch products flow through the pipeline
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         MAGE AI                                  │
-│                                                                  │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────────┐  │
-│  │ Data Loader  │───▶│ Transformer  │───▶│  Data Exporters  │  │
-│  │              │    │              │    │                  │  │
-│  │ Bright Data  │    │ Clean &      │    │ • PostgreSQL     │  │
-│  │ Amazon API   │    │ Enrich       │    │ • CSV Files      │  │
-│  └──────────────┘    └──────────────┘    └──────────────────┘  │
-│         │                                                       │
-└─────────┼───────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                       BRIGHT DATA                                │
-│                                                                  │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────────┐  │
-│  │ Web Scraper  │───▶│   72M+ IPs   │───▶│     Amazon       │  │
-│  │     API      │    │   Proxies    │    │    Products      │  │
-│  └──────────────┘    └──────────────┘    └──────────────────┘  │
-│                                                                  │
-│  • Structured JSON output    • Auto CAPTCHA solving             │
-│  • 99.99% success rate       • No IP blocks                     │
-└─────────────────────────────────────────────────────────────────┘
-```
+3. Watch products flow through all stages
 
 ## Project Structure
 
 ```
 mage-brightdata-demo/
-├── docker-compose.yml              # Mage AI + PostgreSQL services
+├── docker-compose.yml              # Mage AI + PostgreSQL
 ├── .env.example                    # Environment template
-├── requirements.txt                # Python dependencies
-├── blog-post.md                    # Tutorial blog post
+├── blog-post.md                    # Detailed tutorial
 │
 └── mage_project/
     ├── data_loaders/
-    │   └── amazon_product_discovery.py   # Bright Data API integration
+    │   ├── amazon_product_discovery.py   # Bright Data Amazon API
+    │   └── web_unlocker_scraper.py       # Bright Data Web Unlocker
     │
     ├── transformers/
-    │   └── process_amazon_products.py    # Data cleaning & enrichment
+    │   ├── process_amazon_products.py    # Data cleaning & enrichment
+    │   └── detect_price_changes.py       # Price change detection ⭐
+    │
+    ├── conditionals/
+    │   └── check_data_quality.py         # Data quality gate ⭐
     │
     ├── data_exporters/
     │   ├── export_amazon_to_postgres.py  # PostgreSQL export
-    │   └── export_amazon_to_csv.py       # CSV export
+    │   ├── export_amazon_to_csv.py       # CSV export
+    │   └── export_alerts.py              # Slack/webhook alerts ⭐
     │
-    ├── pipelines/
-    │   └── amazon_product_discovery/     # Main pipeline config
-    │
-    └── utils/
-        └── bright_data_client.py         # Reusable BD client
+    └── pipelines/
+        ├── amazon_product_discovery/     # Main pipeline
+        └── custom_web_scraper/           # Web Unlocker pipeline
 ```
 
 ## Configuration
 
 ### Pipeline Variables
 
-Configure what to scrape without code changes:
+Configure without code changes:
 
 ```yaml
-# In pipeline metadata.yaml or Mage UI
 variables:
+  # What to scrape
   keywords:
     - laptop stand
     - mechanical keyboard
-    - monitor light
   limit_per_keyword: 25
+
+  # Price change alerts (percentage)
+  price_change_threshold: 10
+
+  # Data quality thresholds
+  min_products: 10
+  min_price_rate: 0.5    # 50% must have prices
+  min_rating_rate: 0.5   # 50% must have ratings
 ```
 
 ### Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `BRIGHT_DATA_API_TOKEN` | Yes | Your Bright Data API token |
-| `POSTGRES_HOST` | No | Database host (default: `postgres`) |
-| `POSTGRES_USER` | No | Database user (default: `mage`) |
-| `POSTGRES_PASSWORD` | No | Database password (default: `mage_password`) |
-| `POSTGRES_DB` | No | Database name (default: `scraped_data`) |
+| `BRIGHT_DATA_API_TOKEN` | Yes | Web Scraper API token |
+| `BRIGHT_DATA_CUSTOMER_ID` | For Web Unlocker | Customer ID (brd-customer-xxx) |
+| `BRIGHT_DATA_ZONE_PASSWORD` | For Web Unlocker | Zone password |
+| `SLACK_WEBHOOK_URL` | Optional | Slack notifications |
+| `ALERT_WEBHOOK_URL` | Optional | Generic webhook |
 
-## Features
-
-### Mage AI Capabilities Used
+## Mage AI Features Demonstrated
 
 | Feature | How It's Used |
 |---------|---------------|
 | **Visual Pipeline Editor** | Connect blocks visually |
-| **Pipeline Variables** | Configure keywords without code |
+| **Pipeline Variables** | Configure keywords, thresholds without code |
+| **Conditional Blocks** | Data quality gates - stop if data is bad |
+| **Multiple Transformers** | Chain data processing steps |
+| **Multiple Exporters** | Parallel export to Postgres + CSV + Alerts |
 | **Scheduled Triggers** | Automated daily/hourly runs |
-| **Data Quality Tests** | Validate data at each step |
-| **Multiple Exporters** | Parallel export to Postgres + CSV |
 
-### Bright Data Capabilities Used
+## Bright Data Features Demonstrated
 
 | Feature | How It's Used |
 |---------|---------------|
-| **Amazon Web Scraper API** | Structured product data extraction |
+| **Web Scraper API** | Structured Amazon product data |
+| **Web Unlocker** | Custom site scraping with anti-bot bypass |
 | **Async/Polling API** | Handle long-running scrapes |
-| **Auto-retry & CAPTCHA** | Reliable data collection |
-
-## Sample Output
-
-The pipeline produces enriched product data:
-
-| Field | Description | Example |
-|-------|-------------|---------|
-| `title` | Product name | "BESIGN Laptop Stand" |
-| `brand` | Brand name | "BESIGN" |
-| `asin` | Amazon product ID | "B08N5WRWNW" |
-| `best_price` | Current price | 25.99 |
-| `discount_percent` | Calculated discount | 15.0 |
-| `price_tier` | Derived category | "Mid-Range ($25-50)" |
-| `rating` | Customer rating | 4.7 |
-| `rating_category` | Derived category | "Excellent" |
-| `reviews_count` | Number of reviews | 45234 |
-| `search_keyword` | Source keyword | "laptop stand" |
-| `scraped_at` | Timestamp | 2024-01-15 10:30:00 |
+| **72M+ Residential IPs** | Reliable data collection |
 
 ## Enterprise Use Cases
 
-| Use Case | Description |
-|----------|-------------|
-| **Price Monitoring** | Track competitor prices daily, alert on changes |
-| **Market Research** | Analyze pricing trends, popular brands, gaps |
+| Use Case | How This Demo Helps |
+|----------|---------------------|
+| **Price Monitoring** | Daily scrapes + price change detection + alerts |
+| **Competitor Analysis** | Track competitor products, prices, ratings |
+| **Market Research** | Historical data in PostgreSQL for trend analysis |
 | **Inventory Intelligence** | Monitor stock levels, seller changes |
-| **Review Analysis** | Track rating changes, identify quality issues |
 
-## Scaling for Production
+## Sample Output
 
-### Higher Volume
+The pipeline produces enriched data with price change detection:
 
-```yaml
-# Increase products per keyword
-variables:
-  keywords:
-    - keyword1
-    - keyword2
-    # Add more keywords...
-  limit_per_keyword: 100  # Up to 1000
-```
-
-### More Frequent Updates
-
-```yaml
-# Schedule trigger: every 6 hours
-triggers:
-  - name: price_tracking
-    schedule_type: interval
-    interval: 21600  # seconds
-```
-
-### Multiple Categories
-
-Create separate pipelines for different product categories, each with their own schedule and keywords.
+| Field | Example |
+|-------|---------|
+| `title` | BESIGN Laptop Stand |
+| `best_price` | 25.99 |
+| `previous_price` | 29.99 |
+| `price_change_pct` | -13.3% |
+| `price_alert` | True |
+| `alert_type` | PRICE_DROP |
+| `price_tier` | Mid-Range ($25-50) |
 
 ## Tutorial
 
-For a detailed step-by-step guide on building this pipeline, see **[blog-post.md](blog-post.md)**.
+For a detailed step-by-step guide, see **[blog-post.md](blog-post.md)**.
 
-The tutorial covers:
-- What is Mage AI and why use it
-- What is Bright Data and how it works
-- Building each pipeline block from scratch
-- Configuring schedules and variables
-- Enterprise scaling patterns
+Covers:
+- What is Mage AI (features, comparison to Airflow)
+- What is Bright Data (products, how it works)
+- Building each block from scratch
+- Enterprise patterns and scaling
 
 ## Tech Stack
 
 - **[Mage AI](https://www.mage.ai/)** - Open-source data pipeline tool
 - **[Bright Data](https://brightdata.com/)** - Web data platform
-- **[PostgreSQL](https://www.postgresql.org/)** - Database for historical data
+- **[PostgreSQL](https://www.postgresql.org/)** - Historical data storage
 - **[Docker](https://www.docker.com/)** - Containerization
 
 ## Resources
 
 - [Mage AI Documentation](https://docs.mage.ai)
-- [Mage AI GitHub](https://github.com/mage-ai/mage-ai)
 - [Bright Data Documentation](https://docs.brightdata.com)
 - [Amazon Web Scraper API](https://brightdata.com/products/web-scraper/amazon)
+- [Web Unlocker](https://brightdata.com/products/web-unlocker)
 
 ## License
 
