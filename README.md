@@ -19,9 +19,9 @@ This isn't just a "hello world" - it's a **real enterprise demo** showcasing:
 | **Historical Tracking** | PostgreSQL storage with timestamps for trend analysis |
 | **Configurable Pipelines** | Change keywords, thresholds via variables (no code changes) |
 
-## Pipelines
+## Three Production Pipelines
 
-### 1. Amazon Product Discovery
+### Pipeline 1: Amazon Product Discovery
 Scrapes Amazon products using Bright Data's Web Scraper API.
 
 ```
@@ -48,8 +48,8 @@ Scrapes Amazon products using Bright Data's Web Scraper API.
 - Data quality gate blocks export if data is poor
 - Exports to PostgreSQL + CSV + sends alerts
 
-### 2. Custom Web Scraper
-Scrapes ANY website using Bright Data's Web Unlocker.
+### Pipeline 2: Custom Web Scraper (Web Unlocker)
+Scrapes ANY website using Bright Data's Web Unlocker API.
 
 ```
 ┌─────────────────┐    ┌─────────────┐
@@ -63,6 +63,32 @@ Scrapes ANY website using Bright Data's Web Unlocker.
 - Automatic CAPTCHA solving
 - Anti-bot bypass
 - Custom data extraction
+
+### Pipeline 3: Multi-Platform Price Comparison
+Scrapes the same keywords across multiple ecommerce platforms.
+
+```
+┌────────────────────┐    ┌──────────────┐    ┌──────────────┐
+│ Multi-Platform     │───▶│ Compare &    │───▶│ PostgreSQL   │
+│ Scraper            │    │ Analyze      │    │ + CSV        │
+│ (Amazon, Walmart,  │    │              │    │              │
+│  eBay, Target...)  │    │              │    │              │
+└────────────────────┘    └──────────────┘    └──────────────┘
+```
+
+**Platforms Supported:**
+- Amazon
+- Walmart
+- eBay
+- Google Shopping
+- Target
+- Wayfair
+
+**Features:**
+- Same keywords across platforms
+- Price comparison analysis
+- Best deal identification
+- Market positioning insights
 
 ## Quick Start
 
