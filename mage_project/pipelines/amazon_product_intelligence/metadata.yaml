@@ -1,0 +1,219 @@
+blocks:
+# ============================================
+# STAGE 1: DISCOVER PRODUCTS
+# ============================================
+- all_upstream_blocks_executed: true
+  color: null
+  configuration:
+    file_path: data_loaders/amazon_product_discovery.py
+  downstream_blocks:
+  - process_amazon_products
+  executor_config: null
+  executor_type: local_python
+  has_callback: false
+  language: python
+  name: discover_products
+  retry_config: null
+  status: not_executed
+  timeout: null
+  type: data_loader
+  upstream_blocks: []
+  uuid: discover_products
+
+# ============================================
+# STAGE 2: PROCESS PRODUCTS
+# ============================================
+- all_upstream_blocks_executed: true
+  color: null
+  configuration:
+    file_path: transformers/process_amazon_products.py
+  downstream_blocks:
+  - collect_reviews
+  - export_products_to_postgres
+  executor_config: null
+  executor_type: local_python
+  has_callback: false
+  language: python
+  name: process_products
+  retry_config: null
+  status: not_executed
+  timeout: null
+  type: transformer
+  upstream_blocks:
+  - discover_products
+  uuid: process_products
+
+# ============================================
+# STAGE 3: COLLECT REVIEWS (for top products)
+# ============================================
+- all_upstream_blocks_executed: true
+  color: null
+  configuration:
+    file_path: data_loaders/amazon_reviews_collector.py
+  downstream_blocks:
+  - analyze_reviews
+  executor_config: null
+  executor_type: local_python
+  has_callback: false
+  language: python
+  name: collect_reviews
+  retry_config: null
+  status: not_executed
+  timeout: null
+  type: data_loader
+  upstream_blocks:
+  - process_products
+  uuid: collect_reviews
+
+# ============================================
+# STAGE 4: ANALYZE REVIEWS
+# ============================================
+- all_upstream_blocks_executed: true
+  color: null
+  configuration:
+    file_path: transformers/analyze_reviews.py
+  downstream_blocks:
+  - export_reviews_to_postgres
+  - generate_insights_report
+  executor_config: null
+  executor_type: local_python
+  has_callback: false
+  language: python
+  name: analyze_reviews
+  retry_config: null
+  status: not_executed
+  timeout: null
+  type: transformer
+  upstream_blocks:
+  - collect_reviews
+  uuid: analyze_reviews
+
+# ============================================
+# STAGE 5: EXPORT PRODUCTS
+# ============================================
+- all_upstream_blocks_executed: true
+  color: null
+  configuration:
+    file_path: data_exporters/export_amazon_to_postgres.py
+  downstream_blocks: []
+  executor_config: null
+  executor_type: local_python
+  has_callback: false
+  language: python
+  name: export_products_to_postgres
+  retry_config: null
+  status: not_executed
+  timeout: null
+  type: data_exporter
+  upstream_blocks:
+  - process_products
+  uuid: export_products_to_postgres
+
+# ============================================
+# STAGE 6: EXPORT REVIEWS
+# ============================================
+- all_upstream_blocks_executed: true
+  color: null
+  configuration:
+    file_path: data_exporters/export_reviews_to_postgres.py
+  downstream_blocks: []
+  executor_config: null
+  executor_type: local_python
+  has_callback: false
+  language: python
+  name: export_reviews_to_postgres
+  retry_config: null
+  status: not_executed
+  timeout: null
+  type: data_exporter
+  upstream_blocks:
+  - analyze_reviews
+  uuid: export_reviews_to_postgres
+
+# ============================================
+# STAGE 7: GENERATE INSIGHTS REPORT
+# ============================================
+- all_upstream_blocks_executed: true
+  color: null
+  configuration:
+    file_path: data_exporters/generate_insights_report.py
+  downstream_blocks: []
+  executor_config: null
+  executor_type: local_python
+  has_callback: false
+  language: python
+  name: generate_insights_report
+  retry_config: null
+  status: not_executed
+  timeout: null
+  type: data_exporter
+  upstream_blocks:
+  - analyze_reviews
+  uuid: generate_insights_report
+
+# ============================================
+# PIPELINE SETTINGS
+# ============================================
+cache_block_output_in_memory: false
+callbacks: []
+concurrency_config: {}
+conditionals: []
+created_at: '2026-02-09 16:00:00.000000+00:00'
+data_integration: null
+description: |
+  Amazon Product Intelligence Pipeline
+
+  This pipeline demonstrates the full power of Bright Data + Mage AI by:
+  1. Discovering products by keyword (Bright Data Amazon Products API)
+  2. Processing and enriching product data (Mage AI Transformer)
+  3. Collecting reviews for top products (Bright Data Amazon Reviews API)
+  4. Analyzing review sentiment and trends (Mage AI Transformer)
+  5. Storing everything in PostgreSQL (Mage AI Exporter)
+  6. Generating insights report with alerts (Mage AI Exporter)
+
+  This shows:
+  - Multiple Bright Data APIs working together
+  - Mage AI orchestrating the flow
+  - Data passing between stages
+  - Real business intelligence output
+
+  Enterprise Use Cases:
+  - Monitor product health over time
+  - Detect negative review spikes
+  - Track competitor products
+  - Identify quality issues early
+executor_config: {}
+executor_count: 1
+executor_type: null
+extensions: {}
+name: amazon_product_intelligence
+notification_config: {}
+remote_variables_dir: null
+retry_config: {}
+run_pipeline_in_one_process: false
+settings:
+  triggers: null
+spark_config: {}
+tags:
+- brightdata
+- amazon
+- reviews
+- intelligence
+- multi-api
+type: python
+uuid: amazon_product_intelligence
+variables:
+  # Product Discovery Settings
+  keywords:
+    - mechanical keyboard
+  limit_per_keyword: 15
+
+  # Review Collection Settings
+  top_n_products: 5      # Get reviews for top N products
+  sort_by: reviews_count  # Sort products by this field
+
+  # Alert Thresholds
+  negative_review_alert_pct: 20  # Alert if >20% negative reviews
+
+variables_dir: /home/src/mage_project
+widgets: []

@@ -1,94 +1,67 @@
-# Mage AI + Bright Data: Enterprise Web Scraping Pipelines
+# Mage AI + Bright Data: Amazon Product Intelligence
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Mage AI](https://img.shields.io/badge/Mage%20AI-Pipeline-purple)](https://www.mage.ai/)
 [![Bright Data](https://img.shields.io/badge/Bright%20Data-Web%20Scraping-blue)](https://brightdata.com/)
 
-Production-ready data pipelines demonstrating enterprise-grade web scraping by combining **Mage AI** (data pipeline orchestration) with **Bright Data** (web scraping infrastructure).
+A production-ready pipeline that combines **multiple Bright Data APIs** with **Mage AI orchestration** to build an Amazon product intelligence system.
 
 ## What This Demo Shows
 
-This isn't just a "hello world" - it's a **real enterprise demo** showcasing:
+**The key insight:** This demo uses **TWO different Bright Data APIs** in one pipeline, orchestrated by Mage AI.
 
-| Feature | What It Does |
-|---------|--------------|
-| **Price Change Detection** | Compares new prices against historical data, flags significant changes |
-| **Data Quality Gates** | Conditional blocks that stop pipeline if data quality is poor |
-| **Alert Notifications** | Slack/webhook notifications for price drops and issues |
-| **Multiple Data Sources** | Amazon API + Web Unlocker for custom sites |
-| **Historical Tracking** | PostgreSQL storage with timestamps for trend analysis |
-| **Configurable Pipelines** | Change keywords, thresholds via variables (no code changes) |
+| Stage | Bright Data API | What It Does |
+|-------|-----------------|--------------|
+| 1 | Amazon Products API | Discover products by keyword |
+| 2 | Amazon Reviews API | Collect reviews for top products |
 
-## Three Production Pipelines
+**Mage AI orchestrates:**
+- Passing data between API calls
+- Transforming and enriching data
+- Analyzing review sentiment
+- Storing to PostgreSQL
+- Generating insights + Slack alerts
 
-### Pipeline 1: Amazon Product Discovery
-Scrapes Amazon products using Bright Data's Web Scraper API.
-
-```
-┌─────────────┐    ┌──────────────┐    ┌─────────────┐    ┌──────────────┐
-│ Data Loader │───▶│ Transformer  │───▶│ Price Change│───▶│ Data Quality │
-│ (Bright     │    │ (Clean &     │    │ Detection   │    │ Check        │
-│  Data API)  │    │  Enrich)     │    │             │    │ (Conditional)│
-└─────────────┘    └──────────────┘    └─────────────┘    └──────┬───────┘
-                                                                  │
-                            ┌─────────────────────────────────────┼─────────────────┐
-                            │                                     │                 │
-                            ▼                                     ▼                 ▼
-                     ┌─────────────┐                       ┌─────────────┐   ┌─────────────┐
-                     │ PostgreSQL  │                       │ CSV Export  │   │   Alerts    │
-                     │ Export      │                       │             │   │ (Slack/     │
-                     └─────────────┘                       └─────────────┘   │  Webhook)   │
-                                                                             └─────────────┘
-```
-
-**Features:**
-- Searches by keyword, returns 50+ data fields per product
-- Calculates discounts, price tiers, rating categories
-- Detects price changes vs last scrape (alerts on >10% change)
-- Data quality gate blocks export if data is poor
-- Exports to PostgreSQL + CSV + sends alerts
-
-### Pipeline 2: Custom Web Scraper (Web Unlocker)
-Scrapes ANY website using Bright Data's Web Unlocker API.
+## Pipeline Architecture
 
 ```
-┌─────────────────┐    ┌─────────────┐
-│ Web Unlocker    │───▶│ CSV Export  │
-│ (Any URL)       │    │             │
-└─────────────────┘    └─────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           MAGE AI PIPELINE                                   │
+│                                                                              │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────────┐  │
+│  │ Bright Data     │    │ Process &       │    │ Bright Data             │  │
+│  │ Products API    │───▶│ Enrich          │───▶│ Reviews API             │  │
+│  │                 │    │                 │    │ (top 5 products)        │  │
+│  │ "keyboard" →    │    │ + price tiers   │    │                         │  │
+│  │ 15 products     │    │ + discounts     │    │ → 50+ reviews           │  │
+│  └─────────────────┘    └─────────────────┘    └───────────┬─────────────┘  │
+│                                │                           │                 │
+│                                │                           ▼                 │
+│                                │                  ┌─────────────────────┐   │
+│                                │                  │ Analyze Reviews     │   │
+│                                │                  │ + sentiment         │   │
+│                                │                  │ + negative keywords │   │
+│                                │                  │ + trends            │   │
+│                                │                  └───────────┬─────────┘   │
+│                                │                              │              │
+│                                ▼                              ▼              │
+│                    ┌─────────────────────┐      ┌─────────────────────────┐ │
+│                    │ PostgreSQL          │      │ Intelligence Report     │ │
+│                    │ (products table)    │      │ + Slack Alert           │ │
+│                    └─────────────────────┘      └─────────────────────────┘ │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Features:**
-- Scrapes any URL (not just Amazon)
-- Automatic CAPTCHA solving
-- Anti-bot bypass
-- Custom data extraction
+## Why This Combination Makes Sense
 
-### Pipeline 3: Multi-Platform Price Comparison
-Scrapes the same keywords across multiple ecommerce platforms.
-
-```
-┌────────────────────┐    ┌──────────────┐    ┌──────────────┐
-│ Multi-Platform     │───▶│ Compare &    │───▶│ PostgreSQL   │
-│ Scraper            │    │ Analyze      │    │ + CSV        │
-│ (Amazon, Walmart,  │    │              │    │              │
-│  eBay, Target...)  │    │              │    │              │
-└────────────────────┘    └──────────────┘    └──────────────┘
-```
-
-**Platforms Supported:**
-- Amazon
-- Walmart
-- eBay
-- Google Shopping
-- Target
-- Wayfair
-
-**Features:**
-- Same keywords across platforms
-- Price comparison analysis
-- Best deal identification
-- Market positioning insights
+| Without Mage AI | With Mage AI |
+|-----------------|--------------|
+| Call Products API manually | Automated daily |
+| Call Reviews API separately | Chained automatically |
+| No data transformation | Price tiers, sentiment analysis |
+| No historical tracking | PostgreSQL storage |
+| No alerts | Slack notifications |
 
 ## Quick Start
 
@@ -107,6 +80,9 @@ cd mage-brightdata-demo
 cp .env.example .env
 # Edit .env and add your BRIGHT_DATA_API_TOKEN
 
+# Optional: Add Slack webhook for alerts
+# SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+
 # Start services
 docker-compose up -d
 
@@ -116,139 +92,128 @@ open http://localhost:6789
 
 ### Run the Pipeline
 
-1. Navigate to **Pipelines** → **amazon_product_discovery**
+1. Navigate to **Pipelines** → **amazon_product_intelligence**
 2. Click **Run pipeline once**
-3. Watch products flow through all stages
+3. Watch the stages execute:
+   - Products discovered
+   - Data transformed
+   - Reviews collected
+   - Sentiment analyzed
+   - Report generated
+
+## Pipeline Variables
+
+Configure without changing code:
+
+```yaml
+variables:
+  # What to search
+  keywords:
+    - mechanical keyboard
+  limit_per_keyword: 15
+
+  # Review collection
+  top_n_products: 5       # Get reviews for top N products
+  sort_by: reviews_count  # Sort by this field
+
+  # Alerts
+  negative_review_alert_pct: 20  # Alert if >20% negative
+```
+
+## Sample Output
+
+### Products Discovered
+```
+15 products for "mechanical keyboard"
+├── Logitech G Pro X     | $149.99 | 4.7★ | 12,456 reviews
+├── Keychron K2          | $89.00  | 4.5★ | 8,234 reviews
+├── RK Royal Kludge      | $42.99  | 4.4★ | 45,678 reviews
+└── ...
+```
+
+### Review Analysis
+```
+Reviews Analyzed: 127
+Average Rating: 4.3
+Negative Reviews: 12%
+
+Top Negative Keywords:
+  - 'stopped working': 8 mentions
+  - 'keys stuck': 5 mentions
+  - 'cheap plastic': 4 mentions
+```
+
+### Slack Alert
+> **Amazon Product Intelligence Report**
+> - Products Analyzed: 15
+> - Reviews Analyzed: 127
+> - Avg Rating: 4.3
+> - Negative Reviews: 12%
 
 ## Project Structure
 
 ```
 mage-brightdata-demo/
-├── docker-compose.yml              # Mage AI + PostgreSQL
-├── .env.example                    # Environment template
-├── blog-post.md                    # Detailed tutorial
+├── docker-compose.yml
+├── .env.example
 │
 └── mage_project/
     ├── data_loaders/
-    │   ├── amazon_product_discovery.py   # Bright Data Amazon API
-    │   └── web_unlocker_scraper.py       # Bright Data Web Unlocker
+    │   ├── amazon_product_discovery.py   # Products API
+    │   └── amazon_reviews_collector.py   # Reviews API
     │
     ├── transformers/
-    │   ├── process_amazon_products.py    # Data cleaning & enrichment
-    │   └── detect_price_changes.py       # Price change detection ⭐
-    │
-    ├── conditionals/
-    │   └── check_data_quality.py         # Data quality gate ⭐
+    │   ├── process_amazon_products.py    # Product enrichment
+    │   └── analyze_reviews.py            # Sentiment analysis
     │
     ├── data_exporters/
-    │   ├── export_amazon_to_postgres.py  # PostgreSQL export
-    │   ├── export_amazon_to_csv.py       # CSV export
-    │   └── export_alerts.py              # Slack/webhook alerts ⭐
+    │   ├── export_amazon_to_postgres.py  # Store products
+    │   ├── export_reviews_to_postgres.py # Store reviews
+    │   └── generate_insights_report.py   # Report + Slack
     │
     └── pipelines/
-        ├── amazon_product_discovery/     # Main pipeline
-        └── custom_web_scraper/           # Web Unlocker pipeline
+        └── amazon_product_intelligence/  # Main pipeline
 ```
 
-## Configuration
+## Bright Data APIs Used
 
-### Pipeline Variables
-
-Configure without code changes:
-
-```yaml
-variables:
-  # What to scrape
-  keywords:
-    - laptop stand
-    - mechanical keyboard
-  limit_per_keyword: 25
-
-  # Price change alerts (percentage)
-  price_change_threshold: 10
-
-  # Data quality thresholds
-  min_products: 10
-  min_price_rate: 0.5    # 50% must have prices
-  min_rating_rate: 0.5   # 50% must have ratings
-```
-
-### Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `BRIGHT_DATA_API_TOKEN` | Yes | Web Scraper API token |
-| `BRIGHT_DATA_CUSTOMER_ID` | For Web Unlocker | Customer ID (brd-customer-xxx) |
-| `BRIGHT_DATA_ZONE_PASSWORD` | For Web Unlocker | Zone password |
-| `SLACK_WEBHOOK_URL` | Optional | Slack notifications |
-| `ALERT_WEBHOOK_URL` | Optional | Generic webhook |
-
-## Mage AI Features Demonstrated
-
-| Feature | How It's Used |
-|---------|---------------|
-| **Visual Pipeline Editor** | Connect blocks visually |
-| **Pipeline Variables** | Configure keywords, thresholds without code |
-| **Conditional Blocks** | Data quality gates - stop if data is bad |
-| **Multiple Transformers** | Chain data processing steps |
-| **Multiple Exporters** | Parallel export to Postgres + CSV + Alerts |
-| **Scheduled Triggers** | Automated daily/hourly runs |
-
-## Bright Data Features Demonstrated
-
-| Feature | How It's Used |
-|---------|---------------|
-| **Web Scraper API** | Structured Amazon product data |
-| **Web Unlocker** | Custom site scraping with anti-bot bypass |
-| **Async/Polling API** | Handle long-running scrapes |
-| **72M+ Residential IPs** | Reliable data collection |
+| API | Dataset ID | Purpose |
+|-----|------------|---------|
+| Amazon Products - Discover by keyword | `gd_l7q7dkf244hwjntr0` | Find products |
+| Amazon Reviews - Collect by URL | `gd_le8e811kzy4ggddlq` | Get reviews |
 
 ## Enterprise Use Cases
 
-| Use Case | How This Demo Helps |
-|----------|---------------------|
-| **Price Monitoring** | Daily scrapes + price change detection + alerts |
-| **Competitor Analysis** | Track competitor products, prices, ratings |
-| **Market Research** | Historical data in PostgreSQL for trend analysis |
-| **Inventory Intelligence** | Monitor stock levels, seller changes |
+| Use Case | How This Pipeline Helps |
+|----------|-------------------------|
+| **Product Monitoring** | Track your products' reviews over time |
+| **Competitor Analysis** | Monitor competitor product sentiment |
+| **Quality Alerts** | Get notified when negative reviews spike |
+| **Market Research** | Understand what customers complain about |
 
-## Sample Output
+## Scheduling
 
-The pipeline produces enriched data with price change detection:
+Set up automated daily runs:
 
-| Field | Example |
-|-------|---------|
-| `title` | BESIGN Laptop Stand |
-| `best_price` | 25.99 |
-| `previous_price` | 29.99 |
-| `price_change_pct` | -13.3% |
-| `price_alert` | True |
-| `alert_type` | PRICE_DROP |
-| `price_tier` | Mid-Range ($25-50) |
+1. Go to **Triggers** in Mage AI
+2. Create **Schedule** trigger
+3. Set to run daily at 6 AM
+4. Enable
 
-## Tutorial
-
-For a detailed step-by-step guide, see **[blog-post.md](blog-post.md)**.
-
-Covers:
-- What is Mage AI (features, comparison to Airflow)
-- What is Bright Data (products, how it works)
-- Building each block from scratch
-- Enterprise patterns and scaling
+Now you get daily intelligence automatically.
 
 ## Tech Stack
 
-- **[Mage AI](https://www.mage.ai/)** - Open-source data pipeline tool
-- **[Bright Data](https://brightdata.com/)** - Web data platform
-- **[PostgreSQL](https://www.postgresql.org/)** - Historical data storage
+- **[Mage AI](https://www.mage.ai/)** - Pipeline orchestration
+- **[Bright Data](https://brightdata.com/)** - Web scraping APIs
+- **[PostgreSQL](https://www.postgresql.org/)** - Data storage
 - **[Docker](https://www.docker.com/)** - Containerization
 
 ## Resources
 
 - [Mage AI Documentation](https://docs.mage.ai)
-- [Bright Data Documentation](https://docs.brightdata.com)
-- [Amazon Web Scraper API](https://brightdata.com/products/web-scraper/amazon)
-- [Web Unlocker](https://brightdata.com/products/web-unlocker)
+- [Bright Data Web Scraper API](https://brightdata.com/products/web-scraper)
+- [Blog Post Tutorial](blog-post.md)
 
 ## License
 
