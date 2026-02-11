@@ -121,5 +121,27 @@ def transform(data: pd.DataFrame, *args, **kwargs) -> pd.DataFrame:
 
 @test
 def test_output(output, *args) -> None:
-    """Validate transformed data."""
+    """Validate enriched product data quality."""
     assert output is not None, 'Output is undefined'
+    assert len(output) > 0, 'Transformer returned empty DataFrame'
+
+    # Enriched columns must exist after transformation
+    assert 'best_price' in output.columns, 'best_price column missing -- price calculation failed'
+    assert 'price_tier' in output.columns, 'price_tier column missing -- categorization failed'
+
+    # Data quality: best_price should be positive
+    valid_prices = pd.to_numeric(output['best_price'], errors='coerce').dropna()
+    assert len(valid_prices) > 0, 'No valid prices after transformation'
+    assert (valid_prices > 0).all(), f'Found {(valid_prices <= 0).sum()} products with zero/negative price'
+
+    # Data quality: ratings should be 0-5
+    if 'rating' in output.columns:
+        valid_ratings = pd.to_numeric(output['rating'], errors='coerce').dropna()
+        if len(valid_ratings) > 0:
+            assert valid_ratings.between(0, 5).all(), 'Found ratings outside 0-5 range'
+
+    # Data quality: discount_percent should be 0-100
+    if 'discount_percent' in output.columns:
+        discounts = pd.to_numeric(output['discount_percent'], errors='coerce').dropna()
+        if len(discounts) > 0:
+            assert (discounts >= 0).all(), 'Found negative discount percentages'

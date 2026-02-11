@@ -2,34 +2,47 @@ services:
   mage:
     image: mageai/mageai:latest
     container_name: mage-brightdata
-    command: mage start mage_project
+    command: bash -c "pip install google-genai && mage start mage_project"
     ports:
       - "6789:6789"
     volumes:
       - ./mage_project:/home/src/mage_project
     environment:
       - MAGE_DATA_DIR=/home/src/mage_project
-      # Disable authentication for local development
       - REQUIRE_USER_AUTHENTICATION=0
-      # Bright Data - Residential Proxy
-      - BRIGHT_DATA_CUSTOMER_ID=${BRIGHT_DATA_CUSTOMER_ID}
-      - BRIGHT_DATA_ZONE=${BRIGHT_DATA_ZONE}
-      - BRIGHT_DATA_PASSWORD=${BRIGHT_DATA_PASSWORD}
-      - BRIGHT_DATA_PROXY_HOST=${BRIGHT_DATA_PROXY_HOST}
-      - BRIGHT_DATA_PROXY_PORT=${BRIGHT_DATA_PROXY_PORT}
       # Bright Data - Web Scraper API
       - BRIGHT_DATA_API_TOKEN=${BRIGHT_DATA_API_TOKEN}
-      # Bright Data - Web Unlocker (for custom scraping)
-      - BRIGHT_DATA_ZONE_PASSWORD=${BRIGHT_DATA_ZONE_PASSWORD}
-      # Notifications (optional)
-      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
-      - ALERT_WEBHOOK_URL=${ALERT_WEBHOOK_URL}
+      # Gemini AI - Review Analysis
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
       # PostgreSQL
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  dashboard:
+    image: python:3.11-slim
+    container_name: mage-dashboard
+    command: >
+      bash -c "pip install streamlit plotly pandas sqlalchemy psycopg2-binary google-genai &&
+               streamlit run /app/dashboard.py --server.port 8501 --server.address 0.0.0.0"
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./dashboard.py:/app/dashboard.py
+      - ./mage_project:/home/src/mage_project
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - OUTPUT_DIR=/home/src/mage_project/output
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     depends_on:
       - postgres
     restart: unless-stopped
@@ -45,6 +58,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
 
 volumes:
   postgres_data:

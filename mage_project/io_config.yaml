@@ -1,6 +1,3 @@
-# Mage IO configuration
-# Documentation: https://docs.mage.ai/production/configuring-production-settings/secrets/using-environment-variables
-
 version: 0.1.1
 
 default:
@@ -11,7 +8,3 @@ default:
   POSTGRES_PASSWORD: "{{ env_var('POSTGRES_PASSWORD') }}"
   POSTGRES_PORT: "{{ env_var('POSTGRES_PORT') }}"
   POSTGRES_USER: "{{ env_var('POSTGRES_USER') }}"
-
-  # Bright Data credentials
-  BRIGHT_DATA_API_KEY: "{{ env_var('BRIGHT_DATA_API_KEY') }}"
-  BRIGHT_DATA_ZONE: "{{ env_var('BRIGHT_DATA_ZONE') }}"

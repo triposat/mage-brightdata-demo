@@ -1,223 +1,76 @@
-# Building Enterprise-Grade Web Scraping Pipelines with Mage AI and Bright Data
+# Building an Amazon Product Intelligence Pipeline with Mage AI and Bright Data
 
-Web scraping at scale is hard. Between IP blocks, CAPTCHAs, rate limits, and anti-bot measures, getting reliable data from websites like Amazon requires serious infrastructure. And once you have the data, you need pipelines to transform, store, and analyze it.
+Building an Amazon scraper that works in production is a different problem from one that works on your laptop. Anti-bot detection evolves weekly. CAPTCHAs appear mid-session. Your IPs get blocked. And the HTML you parsed yesterday changes overnight because Amazon ran an A/B test on product page layouts. Even if you solve all of that, you still need scheduling, retries, error handling, data storage, and a way to actually *see* what you collected.
 
-In this tutorial, I'll show you how to combine **Mage AI** (a modern data pipeline tool) with **Bright Data** (enterprise web scraping infrastructure) to build a production-ready Amazon product scraping system.
+Bright Data's [Scrapers APIs](https://brightdata.com/products/web-scraper/amazon) skip the scraping layer entirely. You send a keyword or a product URL, you get back structured JSON -- titles, prices, ratings, reviews, seller info -- parsed, normalized, and delivered via API. No proxy infrastructure, no HTML parsing, no anti-bot cat-and-mouse. When Amazon changes their site, Bright Data updates their parsers. Your code doesn't change.
+
+In this tutorial, we'll chain two of these APIs together inside a [Mage AI](https://github.com/mage-ai/mage-ai) pipeline: one to discover products by keyword, another to collect reviews for the top results. Then we'll run Google Gemini over the reviews for sentiment analysis, issue extraction, and theme tagging. Everything lands in PostgreSQL and feeds a live Streamlit dashboard where you can filter the data and ask questions in plain English.
+
+By the end, you'll have a running pipeline you can point at any Amazon product category and get structured, analyzed product data in minutes.
 
 ## Table of Contents
 
-- [What is Mage AI?](#what-is-mage-ai)
-- [What is Bright Data?](#what-is-bright-data)
-- [Why This Combination Works](#why-this-combination-works)
-- [Architecture Overview](#architecture-overview)
-- [Building the Demo Step-by-Step](#building-the-demo-step-by-step)
-- [Real Results](#real-results)
-- [Enterprise Use Cases](#enterprise-use-cases)
+- [What We're Building](#what-were-building)
+- [Quick Start](#quick-start)
+- [How the Pipeline Works](#how-the-pipeline-works)
+- [Real Results and Dashboard](#real-results-and-dashboard)
+- [Going Further](#going-further)
 - [Conclusion](#conclusion)
 
 ---
 
-## What is Mage AI?
+## What We're Building
 
-[Mage AI](https://github.com/mage-ai/mage-ai) is an open-source data pipeline tool designed for transforming and integrating data. Think of it as a modern alternative to Apache Airflow, but with a focus on developer experience and ease of use.
+The pipeline has 6 blocks across two parallel branches:
 
-### Key Features of Mage AI
+<!-- SCREENSHOT: Complete pipeline with all 6 blocks connected -->
+![Complete Pipeline](screenshots/complete-pipeline.png)
+*The branching pipeline in Mage AI -- left branch exports products immediately, right branch collects and analyzes reviews*
 
-| Feature | Description |
-|---------|-------------|
-| **Visual Pipeline Editor** | Build pipelines by connecting blocks visually - no complex DAG files needed |
-| **Modular Block Architecture** | Reusable components: Data Loaders, Transformers, Data Exporters |
-| **Built-in Scheduling** | Cron-based triggers, event-driven pipelines, and API triggers |
-| **Data Quality Testing** | Add tests to any block to validate data before it moves downstream |
-| **Real-time Previews** | See data output at each step as you build |
-| **Multiple Languages** | Python, SQL, and R support in the same pipeline |
-| **Integrations** | Native connectors for databases, cloud storage, APIs, and more |
+Here's the flow:
 
-### How Mage AI Differs from Airflow
+1. The **Bright Data Products API** discovers products by keyword and returns structured data -- title, price, rating, ASIN, seller info
+2. A **transformer** enriches the data with price tiers, discount percentages, and rating categories
+3. The pipeline **branches**: the left side exports products to PostgreSQL immediately, while the right side simultaneously collects reviews
+4. The **Bright Data Reviews API** takes the top products (by review count) and fetches their actual customer reviews
+5. **Google Gemini** analyzes each review for sentiment, issues, and themes
+6. Analyzed reviews export to PostgreSQL
 
-If you've used Apache Airflow, here's what makes Mage AI different:
+**Why not scrape it yourself?** You could build a scraper with Scrapy or Playwright and a proxy network. It would work -- until Amazon updates their page layout, or your IPs get blocked, or CAPTCHAs start appearing on every third request. Bright Data handles anti-bot detection, IP rotation, CAPTCHA solving, and data parsing behind a single API endpoint. You send `{"keyword": "laptop stand"}`, you get back structured JSON. It's hard to justify maintaining your own scraping infrastructure when the API costs a few cents per run.
 
-| Aspect | Apache Airflow | Mage AI |
-|--------|---------------|---------|
-| **Setup** | Complex configuration, separate scheduler/webserver | Single Docker container, runs instantly |
-| **Pipeline Definition** | Python DAG files with boilerplate | Visual editor or simple Python blocks |
-| **Testing** | Requires external testing setup | Built-in test decorators on each block |
-| **Data Preview** | No native support | Real-time preview of data at each step |
-| **Learning Curve** | Steep (days to weeks) | Gentle (hours) |
-| **Local Development** | Difficult to replicate production | Identical local/production experience |
-
-### Mage AI Block Types
-
-Mage pipelines are built from modular blocks:
-
-```
-┌─────────────────┐
-│   DATA LOADER   │  ← Fetch data from APIs, databases, files
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│   TRANSFORMER   │  ← Clean, enrich, transform data
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  DATA EXPORTER  │  ← Save to databases, files, cloud storage
-└─────────────────┘
-```
-
-Additional block types include:
-- **Sensors** - Wait for external conditions before proceeding
-- **Conditionals** - Branch logic based on data conditions
-- **Callbacks** - Execute actions on pipeline success/failure
-- **Charts** - Visualize data within the pipeline
-
-<!-- SCREENSHOT: Mage AI pipeline editor showing block connections -->
-![Mage AI Pipeline Editor](screenshots/mage-pipeline-editor.png)
-*The Mage AI visual pipeline editor - drag and connect blocks to build pipelines*
+**Why a pipeline tool instead of a Python script?** Because this pipeline branches -- after processing products, one branch exports to the database while the other simultaneously collects reviews. If review collection fails, your product data is already safe. Mage AI also handles automatic retries, data quality tests that gate every step, and pipeline variables you can change without touching code.
 
 ---
 
-## What is Bright Data?
+## Quick Start
 
-[Bright Data](https://brightdata.com) is the world's leading web data platform, providing the infrastructure needed for reliable, large-scale web scraping.
-
-### The Web Scraping Challenge
-
-When you try to scrape websites at scale, you encounter:
-
-- **IP Blocks** - Websites detect and block datacenter IPs
-- **CAPTCHAs** - Bot detection challenges that break automation
-- **Rate Limits** - Requests get throttled or rejected
-- **Anti-Bot Systems** - Sophisticated detection (Cloudflare, PerimeterX, etc.)
-- **Dynamic Content** - JavaScript-rendered pages that need browser execution
-- **HTML Changes** - Website structure changes that break parsers
-
-### Bright Data's Solution
-
-Bright Data provides infrastructure to overcome these challenges:
-
-| Product | What It Does |
-|---------|--------------|
-| **Residential Proxies** | 72M+ real residential IPs that websites trust |
-| **Web Unlocker** | Automatic CAPTCHA solving and anti-bot bypass |
-| **Scraping Browser** | Managed browsers for JavaScript-heavy sites |
-| **Web Scraper APIs** | Pre-built scrapers for popular sites (Amazon, LinkedIn, etc.) |
-| **Datasets** | Ready-made datasets if you don't want to scrape yourself |
-
-### Amazon Web Scraper API
-
-For this demo, we use Bright Data's **Amazon Web Scraper API** which:
-- Returns structured JSON (no HTML parsing needed)
-- Handles all anti-bot measures automatically
-- Supports search by keyword, ASIN, or URL
-- Provides 50+ data points per product (price, reviews, ratings, seller info, etc.)
-
----
-
-## Why This Combination Works
-
-### The Problem with DIY Solutions
-
-Building a production scraping pipeline from scratch requires:
-
-1. **Proxy Infrastructure** - Rotating IPs, handling blocks
-2. **Scraping Logic** - HTTP requests, browser automation, parsing
-3. **Pipeline Orchestration** - Scheduling, retries, monitoring
-4. **Data Processing** - Cleaning, transformation, validation
-5. **Storage** - Database setup, schema management
-6. **Monitoring** - Alerting, logging, debugging
-
-That's a lot of infrastructure to maintain.
-
-### The Mage AI + Bright Data Solution
-
-| Component | Handled By |
-|-----------|-----------|
-| Proxy/IP rotation | Bright Data |
-| Anti-bot bypass | Bright Data |
-| Data extraction | Bright Data Web Scraper API |
-| Pipeline orchestration | Mage AI |
-| Scheduling & triggers | Mage AI |
-| Data transformation | Mage AI |
-| Data quality testing | Mage AI |
-| Storage & export | Mage AI |
-
-**Result**: You focus on *what* data you want, not *how* to get it reliably.
-
----
-
-## Architecture Overview
-
-Here's the complete architecture of our Amazon product scraping pipeline:
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                              MAGE AI                                      │
-│  ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐   │
-│  │   Data Loader   │────▶│   Transformer    │────▶│  Data Exporter  │   │
-│  │                 │     │                  │     │                 │   │
-│  │  - Call Bright  │     │  - Clean data    │     │  - PostgreSQL   │   │
-│  │    Data API     │     │  - Add price     │     │  - CSV files    │   │
-│  │  - Poll results │     │    tiers         │     │                 │   │
-│  │  - Return JSON  │     │  - Calculate     │     │                 │   │
-│  │                 │     │    discounts     │     │                 │   │
-│  └────────┬────────┘     └──────────────────┘     └─────────────────┘   │
-│           │                                                              │
-│           │  HTTP Request                                                │
-└───────────┼──────────────────────────────────────────────────────────────┘
-            │
-            ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           BRIGHT DATA                                    │
-│  ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐   │
-│  │  Web Scraper    │────▶│  Proxy Network   │────▶│     Amazon      │   │
-│  │     API         │     │  (72M+ IPs)      │     │                 │   │
-│  │                 │     │                  │     │                 │   │
-│  │  - Structured   │     │  - Residential   │     │  - Product      │   │
-│  │    JSON output  │     │  - Auto-rotate   │     │    pages        │   │
-│  │  - Async/poll   │     │  - CAPTCHA solve │     │  - Search       │   │
-│  │                 │     │                  │     │    results      │   │
-│  └─────────────────┘     └──────────────────┘     └─────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### Pipeline Flow
-
-1. **Data Loader** triggers Bright Data's Amazon API with search keywords
-2. **Bright Data** scrapes Amazon using residential proxies, returns structured JSON
-3. **Transformer** cleans data, calculates discounts, adds price tiers
-4. **Data Exporters** save to PostgreSQL (for querying) and CSV (for sharing)
-
----
-
-## Building the Demo Step-by-Step
-
-Let's build this pipeline from scratch.
+Clone the repo, add your API keys, and run it -- then we'll walk through the interesting parts.
 
 ### Prerequisites
 
-- Docker and Docker Compose installed
-- Bright Data account with API token ([sign up here](https://brightdata.com))
-- Basic Python knowledge
+- **Docker and Docker Compose** ([get Docker](https://docs.docker.com/get-docker/))
+- A **Bright Data** account with API token
+- A **Google Gemini** API key (free tier works)
+- Basic familiarity with Python and Docker -- no scraping experience needed, that's the point
 
-### Step 1: Project Setup
-
-Clone the repository and configure your environment:
+### Step 1: Clone and Configure
 
 ```bash
-git clone https://github.com/luminati-io/mage-brightdata-demo.git
+git clone https://github.com/brightdata/mage-brightdata-demo.git
 cd mage-brightdata-demo
-
-# Copy environment template
 cp .env.example .env
 ```
 
-Edit `.env` with your Bright Data API token:
+Edit `.env` with your API keys:
 
 ```env
 BRIGHT_DATA_API_TOKEN=your_api_token_here
+GEMINI_API_KEY=your_gemini_api_key_here
 ```
+
+**Getting your Bright Data API token:** Sign up at [brightdata.com](https://brightdata.com) (free trial available), then go to [Account Settings](https://brightdata.com/cp/setting/users) and create an API key. The pipeline uses two [Scrapers APIs](https://brightdata.com/pricing/web-scraper) -- pay per record, no plan commitment. A typical run of this demo (20 products + ~100 reviews) costs under a dollar, and the free trial includes credits to run it multiple times.
+
+**Getting your Gemini API key:** Go to [Google AI Studio](https://aistudio.google.com/apikey), sign in, click **Create API Key**. Free tier, no credit card required. The pipeline works without it too -- it falls back to rating-based sentiment -- but you'll miss the AI-powered issue extraction and themes.
 
 ### Step 2: Start the Services
 
@@ -225,504 +78,254 @@ BRIGHT_DATA_API_TOKEN=your_api_token_here
 docker-compose up -d
 ```
 
-This starts:
-- **Mage AI** on http://localhost:6789
-- **PostgreSQL** for data storage
+This starts three containers:
+
+| Service | URL | Purpose |
+|---------|-----|---------|
+| **Mage AI** | `http://localhost:6789` | Pipeline builder and orchestration |
+| **Streamlit Dashboard** | `http://localhost:8501` | Live data visualization + chat |
+| **PostgreSQL** | `localhost:5432` | Data storage |
+
+First run pulls images (~2-3 GB) and installs dependencies -- about 3-5 minutes on a decent connection. After that, starts are near-instant.
 
 <!-- SCREENSHOT: Docker containers running -->
 ![Docker Services Running](screenshots/docker-services.png)
-*Both Mage AI and PostgreSQL containers running*
+*All three services running*
 
-### Step 3: Open Mage AI
+### Step 3: Run the Pipeline
 
-Navigate to http://localhost:6789 in your browser.
+Open `http://localhost:6789`, click into the `amazon_product_intelligence` pipeline, then click **Run pipeline once**.
 
 <!-- SCREENSHOT: Mage AI home page -->
 ![Mage AI Home](screenshots/mage-home.png)
-*Mage AI dashboard showing available pipelines*
+*The Mage AI dashboard*
 
-### Step 4: Create the Data Loader
-
-The data loader calls Bright Data's Amazon Web Scraper API.
-
-In Mage AI:
-1. Click **New Pipeline** → **Standard (batch)**
-2. Name it `amazon_product_discovery`
-3. Click **+ Data Loader** → **Python** → **API**
-
-<!-- SCREENSHOT: Creating a new data loader block -->
-![Create Data Loader](screenshots/create-data-loader.png)
-*Adding a data loader block to the pipeline*
-
-Here's the data loader code:
-
-```python
-import os
-import time
-import requests
-import pandas as pd
-
-@data_loader
-def load_data(*args, **kwargs):
-    """
-    Fetch Amazon products using Bright Data's Web Scraper API.
-    """
-    api_token = os.getenv('BRIGHT_DATA_API_TOKEN')
-    dataset_id = 'gd_l7q7dkf244hwjntr0'  # Amazon discovery dataset
-
-    # Get keywords from pipeline variables (configurable!)
-    keywords = kwargs.get('keywords', ['laptop stand', 'mechanical keyboard'])
-    limit = kwargs.get('limit_per_keyword', 25)
-
-    all_products = []
-
-    for keyword in keywords:
-        print(f"Scraping Amazon for: {keyword}")
-
-        # Step 1: Trigger the scrape
-        response = requests.post(
-            'https://api.brightdata.com/datasets/v3/scrape',
-            headers={
-                'Authorization': f'Bearer {api_token}',
-                'Content-Type': 'application/json'
-            },
-            params={'dataset_id': dataset_id, 'format': 'json'},
-            json=[{'keyword': keyword, 'num_of_results': limit}]
-        )
-
-        snapshot_id = response.json()['snapshot_id']
-        print(f"  Snapshot ID: {snapshot_id}")
-
-        # Step 2: Poll until results are ready
-        while True:
-            result = requests.get(
-                f'https://api.brightdata.com/datasets/v3/snapshot/{snapshot_id}',
-                headers={'Authorization': f'Bearer {api_token}'},
-                params={'format': 'json'}
-            )
-
-            if result.status_code == 200:
-                products = result.json()
-                for p in products:
-                    p['search_keyword'] = keyword
-                all_products.extend(products)
-                print(f"  Found {len(products)} products")
-                break
-
-            print("  Waiting for results...")
-            time.sleep(10)
-
-    return pd.DataFrame(all_products)
-```
-
-**Key points:**
-- Uses **async API pattern** - trigger scrape, get snapshot ID, poll for results
-- **Pipeline variables** (`kwargs`) make keywords configurable without code changes
-- Adds `search_keyword` to track which keyword found each product
-
-### Step 5: Create the Transformer
-
-The transformer cleans and enriches the raw data.
-
-Click **+ Transformer** → **Python** → **Generic**
-
-```python
-import pandas as pd
-
-@transformer
-def transform(data: pd.DataFrame, *args, **kwargs):
-    """
-    Clean and enrich Amazon product data.
-    """
-    if len(data) == 0:
-        return data
-
-    # Extract best price
-    data['best_price'] = data.apply(
-        lambda x: x.get('final_price') or x.get('initial_price'), axis=1
-    )
-
-    # Calculate discount percentage
-    data['discount_percent'] = 0.0
-    mask = (data['initial_price'].notna()) & (data['initial_price'] > 0)
-    data.loc[mask, 'discount_percent'] = (
-        (data.loc[mask, 'initial_price'] - data.loc[mask, 'final_price'])
-        / data.loc[mask, 'initial_price'] * 100
-    ).round(1)
-
-    # Create price tiers for analysis
-    def get_price_tier(price):
-        if pd.isna(price): return 'Unknown'
-        if price < 25: return 'Budget (<$25)'
-        elif price < 50: return 'Mid-Range ($25-50)'
-        elif price < 100: return 'Premium ($50-100)'
-        else: return 'Luxury ($100+)'
-
-    data['price_tier'] = data['best_price'].apply(get_price_tier)
-
-    # Categorize ratings
-    def get_rating_category(rating):
-        if pd.isna(rating): return 'No Rating'
-        if rating < 3: return 'Poor'
-        elif rating < 4: return 'Average'
-        elif rating < 4.5: return 'Good'
-        else: return 'Excellent'
-
-    data['rating_category'] = data['rating'].apply(get_rating_category)
-
-    # Popularity score (reviews * rating)
-    data['popularity'] = (data['reviews_count'].fillna(0) * data['rating'].fillna(0)).round(0)
-
-    print(f"Processed {len(data)} products")
-    print(f"Price tiers: {data['price_tier'].value_counts().to_dict()}")
-
-    return data
-```
-
-<!-- SCREENSHOT: Transformer block showing data preview -->
-![Transformer Preview](screenshots/transformer-preview.png)
-*Real-time data preview showing transformed products*
-
-### Step 6: Create Data Exporters
-
-#### PostgreSQL Exporter
-
-Click **+ Data Exporter** → **Python** → **PostgreSQL**
-
-```python
-import os
-import pandas as pd
-from sqlalchemy import create_engine
-
-@data_exporter
-def export_data(data: pd.DataFrame, *args, **kwargs):
-    """Export to PostgreSQL for historical tracking."""
-    if len(data) == 0:
-        return
-
-    connection_string = (
-        f"postgresql://{os.getenv('POSTGRES_USER', 'mage')}:"
-        f"{os.getenv('POSTGRES_PASSWORD', 'mage_password')}@"
-        f"{os.getenv('POSTGRES_HOST', 'postgres')}:"
-        f"{os.getenv('POSTGRES_PORT', '5432')}/"
-        f"{os.getenv('POSTGRES_DB', 'scraped_data')}"
-    )
-
-    engine = create_engine(connection_string)
-
-    # Add timestamp for tracking
-    data['scraped_at'] = pd.Timestamp.now()
-
-    # Select columns to export
-    columns = ['title', 'brand', 'asin', 'url', 'best_price', 'currency',
-               'discount_percent', 'price_tier', 'rating', 'rating_category',
-               'reviews_count', 'search_keyword', 'scraped_at']
-
-    df_export = data[[c for c in columns if c in data.columns]]
-
-    df_export.to_sql('amazon_products', engine, if_exists='append', index=False)
-    print(f"Exported {len(df_export)} products to PostgreSQL")
-```
-
-#### CSV Exporter
-
-Click **+ Data Exporter** → **Python** → **Generic**
-
-```python
-import os
-import pandas as pd
-from datetime import datetime
-
-@data_exporter
-def export_data(data: pd.DataFrame, *args, **kwargs):
-    """Export to CSV with timestamp."""
-    if len(data) == 0:
-        return
-
-    output_dir = '/home/src/mage_project/output'
-    os.makedirs(output_dir, exist_ok=True)
-
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f"amazon_products_{timestamp}.csv"
-    filepath = os.path.join(output_dir, filename)
-
-    data.to_csv(filepath, index=False)
-    print(f"Exported to: {filepath}")
-```
-
-### Step 7: Connect the Blocks
-
-In the visual editor, connect:
-1. **amazon_product_discovery** → **process_amazon_products**
-2. **process_amazon_products** → **export_amazon_to_postgres**
-3. **process_amazon_products** → **export_amazon_to_csv**
-
-<!-- SCREENSHOT: Complete pipeline with all blocks connected -->
-![Complete Pipeline](screenshots/complete-pipeline.png)
-*The complete pipeline with all blocks connected*
-
-### Step 8: Configure Pipeline Variables
-
-Instead of hardcoding keywords, use pipeline variables.
-
-Edit the pipeline's `metadata.yaml` or use the UI:
-
-```yaml
-variables:
-  keywords:
-    - laptop stand
-    - mechanical keyboard
-    - monitor light
-  limit_per_keyword: 25
-```
-
-<!-- SCREENSHOT: Pipeline variables configuration -->
-![Pipeline Variables](screenshots/pipeline-variables.png)
-*Configuring pipeline variables in the Mage AI UI*
-
-### Step 9: Run the Pipeline
-
-Click **Run pipeline once** to execute.
-
-<!-- SCREENSHOT: Pipeline running/executing -->
-![Pipeline Running](screenshots/pipeline-running.png)
-*Pipeline execution in progress*
-
-Watch as:
-1. Data Loader fetches products from Bright Data (shows progress in logs)
-2. Transformer processes and enriches data (shows preview)
-3. Exporters save to PostgreSQL and CSV
+The pipeline takes about 10-12 minutes end to end. Most of that time is the Bright Data APIs collecting data from Amazon -- the enrichment, AI analysis, and database exports are near-instant. When all 6 blocks turn green, open `http://localhost:8501` to see the dashboard.
 
 <!-- SCREENSHOT: Pipeline completed successfully -->
 ![Pipeline Complete](screenshots/pipeline-complete.png)
-*Pipeline completed successfully - all blocks green*
-
-### Step 10: Set Up Scheduled Runs
-
-For automated daily price tracking:
-
-1. Go to **Triggers** in the left sidebar
-2. Click **+ New trigger**
-3. Select **Schedule**
-4. Configure:
-   - Name: `daily_price_tracking`
-   - Frequency: Daily at 6:00 AM
-5. Save and enable
-
-<!-- SCREENSHOT: Schedule trigger configuration -->
-![Schedule Trigger](screenshots/schedule-trigger.png)
-*Configuring a daily schedule trigger*
+*All 6 blocks green -- pipeline complete*
 
 ---
 
-## Real Results
+## How the Pipeline Works
 
-Running the pipeline with 3 keywords and 25 products each:
+Now that you've seen it run, let's walk through the code. The complete source is in `mage_project/` in the [GitHub repo](https://github.com/brightdata/mage-brightdata-demo) -- the snippets below are simplified for readability. We'll focus on the Bright Data integrations and the Gemini analysis, since the enrichment and export blocks are straightforward data engineering.
 
-### Scraping Performance
+### Discovering Products with the Bright Data Products API
 
-| Metric | Value |
-|--------|-------|
-| Products scraped | 75 |
-| Success rate | 100% |
-| Total time | ~90 seconds |
-| Bright Data API calls | 3 |
+We send keywords to the Amazon Products API and get back structured data. The API uses an async pattern: trigger the collection, get a snapshot ID, poll until results are ready.
 
-### Data Quality
+```python
+DATASET_ID = "gd_l7q7dkf244hwjntr0"  # Amazon Products
+API_BASE = "https://api.brightdata.com/datasets/v3"
 
-| Metric | Value |
-|--------|-------|
-| Products with price | 75 (100%) |
-| Products with rating | 72 (96%) |
-| Products with reviews | 70 (93%) |
-| Avg discount | 12% |
+# Trigger the collection
+response = requests.post(
+    f"{API_BASE}/scrape",
+    headers={"Authorization": f"Bearer {api_token}",
+             "Content-Type": "application/json"},
+    params={"dataset_id": DATASET_ID,
+            "discover_by": "keyword",
+            "limit_per_input": kwargs.get('limit_per_keyword', 10)},
+    json={"input": [{"keyword": kw} for kw in keywords]}
+)
+snapshot_id = response.json()["snapshot_id"]
 
-### Sample Output
-
-| Product | Price | Rating | Reviews | Price Tier |
-|---------|-------|--------|---------|------------|
-| BESIGN Laptop Stand | $25.99 | 4.7 | 45,234 | Mid-Range |
-| Keychron K2 Keyboard | $89.00 | 4.5 | 12,456 | Premium |
-| BenQ Monitor Light | $109.00 | 4.6 | 8,932 | Luxury |
-| Nulaxy Laptop Stand | $22.99 | 4.5 | 89,234 | Budget |
-| Logitech MX Keys | $119.99 | 4.6 | 15,678 | Luxury |
-
-<!-- SCREENSHOT: Data preview showing scraped products -->
-![Data Preview](screenshots/data-preview.png)
-*Sample of scraped Amazon products with enriched data*
-
----
-
-## Enterprise Use Cases
-
-This architecture scales for real business applications:
-
-### 1. Competitive Price Monitoring
-
-**Scenario**: Track competitor prices daily across thousands of products.
-
-```yaml
-# Configure pipeline variables
-variables:
-  keywords:
-    - [your product category 1]
-    - [your product category 2]
-    # ... hundreds of keywords
-  limit_per_keyword: 100
-
-# Schedule: Every 6 hours
+# Poll until results are ready
+data = requests.get(
+    f"{API_BASE}/snapshot/{snapshot_id}",
+    headers={"Authorization": f"Bearer {api_token}"},
+    params={"format": "json"}
+).json()
 ```
 
-**Benefits**:
-- Historical price database for trend analysis
-- Alert when competitors drop prices
-- Data-driven pricing decisions
+Here's what comes back -- one object per product, structured and ready to use:
 
-### 2. Market Research & Analysis
+```json
+{
+  "title": "BESIGN LS03 Aluminum Laptop Stand",
+  "asin": "B07YFY5MM8",
+  "url": "https://www.amazon.com/dp/B07YFY5MM8",
+  "initial_price": 19.99,
+  "final_price": 16.99,
+  "currency": "USD",
+  "rating": 4.8,
+  "reviews_count": 22776,
+  "seller_name": "BESIGN",
+  "categories": ["Office Products", "Office & School Supplies"],
+  "image_url": "https://m.media-amazon.com/images/I/..."
+}
+```
 
-**Scenario**: Analyze market trends, popular brands, price distributions.
+No HTML to parse. No selectors to maintain. The `kwargs.get('keywords')` call pulls from Mage AI pipeline variables, so you can change search terms from the UI without editing code.
 
-**SQL queries on your PostgreSQL data**:
+### Chaining a Second API for Reviews
+
+The review collector receives the processed products from the upstream block, sorts by review count, picks the top N, and feeds their Amazon URLs into a second Bright Data API:
+
+```python
+REVIEWS_DATASET_ID = "gd_le8e811kzy4ggddlq"  # Amazon Reviews
+
+# Top products from upstream (passed automatically by Mage AI)
+top_products = data.sort_values('reviews_count', ascending=False).head(top_n)
+product_urls = top_products['url'].dropna().tolist()
+
+# Feed URLs into the Reviews API
+response = requests.post(
+    f"{API_BASE}/scrape",
+    headers={"Authorization": f"Bearer {api_token}",
+             "Content-Type": "application/json"},
+    params={"dataset_id": REVIEWS_DATASET_ID},
+    json={"input": [{"url": url} for url in product_urls]}
+)
+# Same async poll pattern as products...
+```
+
+The first API discovered *what* to look at. The second goes deeper on the best candidates. Mage AI passes the upstream block's output automatically -- no manual wiring.
+
+Both API blocks have retry configuration: if a call fails, Mage AI retries 3 times with a 30-second delay. Every block also has a `@test` function that runs after execution -- if it fails, downstream blocks don't run, so bad data never reaches PostgreSQL.
+
+### AI-Powered Review Analysis with Gemini
+
+Instead of keyword matching (which would flag "not cheap, great quality!" as negative because of the word "cheap"), we use Gemini to understand context. The block processes reviews in batches with a 3-model rotation to stay within free tier limits:
+
+```python
+GEMINI_MODELS = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"]
+
+prompt = f"""Analyze these reviews. For EACH, return JSON with:
+- "sentiment": "Positive", "Neutral", or "Negative"
+- "issues": specific product issues mentioned
+- "themes": 1-3 topic tags
+- "summary": one-sentence summary
+Return ONLY JSON.\n\n{reviews_text}"""
+
+for model in models:
+    try:
+        response = client.models.generate_content(model=model, contents=prompt)
+        return json.loads(response.text.strip())
+    except Exception as e:
+        if '429' in str(e):
+            continue  # Rate limited -- rotate to next model
+```
+
+When flash-lite (15 requests/min) hits its limit, the code falls back to flash (10/min), then pro (5/min). Gemini returns sentiment based on actual text meaning (not just star count), specific issues like "wobbles on uneven surfaces" or "hinge loosens over time," themes like "build quality" or "value for money," and a one-sentence summary.
+
+If the Gemini key isn't configured, the pipeline still works -- it falls back to rating-based sentiment (4-5 stars = Positive, 3 = Neutral, 1-2 = Negative). You get the data either way.
+
+The remaining blocks -- a transformer for price tiers and discount calculations, and two database exporters with atomic upsert logic -- are standard data engineering. They're in the [repo](https://github.com/brightdata/mage-brightdata-demo) if you want to dig in.
+
+---
+
+## Real Results and Dashboard
+
+Here's what the pipeline produces with the default keywords -- "laptop stand" and "wireless earbuds."
+
+**20 products discovered** across both keywords, ranging from $9.99 to $79.99. You get a mix of budget and mid-range products across two different categories -- the dashboard charts look much more interesting with this variety than with a single keyword.
+
+**100 reviews analyzed by Gemini** across the top 4 products by review count. This is where two keywords pay off: laptop stands tend to be uniformly well-reviewed, but wireless earbuds surface real issues. The sentiment split lands around 85% Positive, 9% Neutral, and 6% Negative -- not a wall of green. The top themes Gemini extracts tell the story: "value for money" (53 mentions), "sound quality" (50), "battery life" (29), "comfort" (25), "connectivity" (19). These are actionable insights that star ratings alone don't give you.
+
+**What the pipeline adds to your raw data:**
+
+| Field | Example | Added By |
+|-------|---------|----------|
+| `best_price` | $16.99 | Transformer (calculated) |
+| `discount_percent` | 15.0% | Transformer (calculated) |
+| `price_tier` | Budget (<$25) | Transformer (enriched) |
+| `rating_category` | Excellent (4.5-5) | Transformer (enriched) |
+| `sentiment` | Negative | Gemini AI |
+| `issues` | ["Bluetooth drops connection frequently"] | Gemini AI |
+| `themes` | ["connectivity", "battery life"] | Gemini AI |
+| `ai_summary` | "Battery lasts only 2 hours despite claims of 8" | Gemini AI |
+
+### The Dashboard
+
+Open `http://localhost:8501` for the Streamlit dashboard. It reads from PostgreSQL and auto-refreshes every 60 seconds.
+
+<!-- SCREENSHOT: Streamlit dashboard showing product intelligence -->
+![Dashboard](screenshots/dashboard.png)
+*Product intelligence dashboard -- price comparison, sentiment breakdown, AI-detected issues, and theme analysis*
+
+The charts cover price comparison across products, sentiment distribution (color-coded), AI-detected issues ranked by frequency, and a theme treemap showing what customers talk about most. Sidebar filters let you slice by price tier, rating, or sentiment, and every table is sortable.
+
+The dashboard also has a **Chat with Your Data** feature. Ask questions in plain English and Gemini answers using your actual scraped data as context:
+
+> **You:** "Which product has the best value for money?"
+>
+> **Gemini:** "Based on the data, the BESIGN LS03 Aluminum Laptop Stand offers the best value -- it has the highest review count (22,776) with a 4.8 rating at just $16.99. Its positive sentiment rate is 96%, making it the top-rated product in the dataset."
+
+<!-- SCREENSHOT: Chat with Your Data feature -->
+![Chat Feature](screenshots/chat-with-data.png)
+*Ask questions about your scraped data in plain English*
+
+---
+
+## Going Further
+
+### Pipeline Variables
+
+Everything is configurable without touching code:
+
+| Variable | What It Controls | Default |
+|----------|-----------------|---------|
+| `keywords` | Amazon search terms | `["laptop stand", "wireless earbuds"]` |
+| `limit_per_keyword` | Products per keyword from Bright Data | `10` |
+| `top_n_products` | How many top products get reviews collected | `4` |
+| `reviews_per_product` | Max reviews per product | `25` |
+| `sort_by` | How to rank products for review selection | `reviews_count` |
+
+Change `keywords` to `["phone case", "USB-C hub"]` and you've got a completely different dataset -- no code changes.
+
+<!-- SCREENSHOT: Pipeline variables configuration -->
+![Pipeline Variables](screenshots/pipeline-variables.png)
+*Pipeline variables in the Mage AI UI*
+
+### Scheduling
+
+For automated intelligence, go to **Triggers** in the Mage AI sidebar, click **+ New trigger > Schedule**, and set a frequency (`@daily` for midnight UTC, hourly, or custom cron). Each scheduled run updates existing products while preserving historical data, so you build a time series that tracks price changes, rating shifts, and sentiment trends.
+
+### Enterprise Use Cases
+
+**Competitive Price Monitoring** -- Run daily across multiple keywords to build a historical price database. Track how competitor pricing shifts week over week.
+
+**Product Quality Monitoring** -- Track your own product reviews. The AI sentiment analysis catches negative spikes early, before they affect your listing:
 
 ```sql
--- Average price by category over time
-SELECT
-    search_keyword,
-    DATE(scraped_at) as date,
-    AVG(best_price) as avg_price,
-    COUNT(*) as product_count
-FROM amazon_products
-GROUP BY search_keyword, DATE(scraped_at)
-ORDER BY date;
-
--- Top brands by review count
-SELECT
-    brand,
-    SUM(reviews_count) as total_reviews,
-    AVG(rating) as avg_rating
-FROM amazon_products
-WHERE brand IS NOT NULL
-GROUP BY brand
-ORDER BY total_reviews DESC
-LIMIT 20;
+-- Find products with rising negative sentiment this week
+SELECT asin, product_name,
+    AVG(CASE WHEN sentiment = 'Negative' THEN 1 ELSE 0 END) as negative_rate
+FROM amazon_reviews
+WHERE scraped_at > NOW() - INTERVAL '7 days'
+GROUP BY asin, product_name
+HAVING AVG(CASE WHEN sentiment = 'Negative' THEN 1 ELSE 0 END) > 0.2;
 ```
 
-### 3. Inventory Intelligence
-
-**Scenario**: Monitor stock levels and seller changes.
-
-The Bright Data Amazon API returns:
-- `availability` - In stock, out of stock, limited
-- `seller_name` - Who's selling the product
-- `bought_past_month` - Sales velocity indicator
-
-Track these over time to:
-- Predict stockouts before they happen
-- Identify when competitors run out of stock
-- Monitor seller changes (3P vs 1P)
-
-### 4. Review & Rating Analysis
-
-**Scenario**: Track product quality over time.
-
-```sql
--- Products with declining ratings
-SELECT
-    asin,
-    title,
-    MIN(rating) as lowest_rating,
-    MAX(rating) as highest_rating,
-    MAX(rating) - MIN(rating) as rating_change
-FROM amazon_products
-WHERE scraped_at > NOW() - INTERVAL '30 days'
-GROUP BY asin, title
-HAVING MAX(rating) - MIN(rating) > 0.3
-ORDER BY rating_change DESC;
-```
-
----
-
-## Why Bright Data for Enterprise Scraping?
-
-Having built scrapers from scratch before, here's why Bright Data is worth it:
-
-| DIY Scraping | Bright Data |
-|--------------|-------------|
-| Build proxy rotation infrastructure | 72M+ residential IPs built-in |
-| Implement CAPTCHA solving | Automatic CAPTCHA bypass |
-| Handle IP blocks and bans | 99.99% success rate |
-| Parse HTML (breaks when site changes) | Structured JSON API |
-| Maintain scraping infrastructure | Fully managed |
-| Debug anti-bot detection | Handled automatically |
-| Scale server infrastructure | Scales instantly |
-
-**The math**: If your engineering time is worth $100/hour, and you spend 40 hours building/maintaining scrapers, that's $4,000 - likely more than a year of Bright Data API usage.
-
-## Why Mage AI for Data Pipelines?
-
-Compared to traditional orchestration tools:
-
-| Aspect | Airflow | Mage AI |
-|--------|---------|---------|
-| **Time to first pipeline** | Hours/days | Minutes |
-| **Pipeline definition** | Complex Python DAGs | Visual editor + simple blocks |
-| **Local development** | Difficult | Same as production |
-| **Data preview** | None | Real-time at each step |
-| **Testing** | External setup required | Built-in test decorators |
-| **Learning curve** | Steep | Gentle |
+**Market Research** -- AI-extracted issues reveal pain points that star ratings miss: "wobbles on uneven surfaces" (stability), "hinge loosens over time" (durability), "scratches laptop bottom" (materials). Use these to position your product against specific competitor weaknesses.
 
 ---
 
 ## Conclusion
 
-Combining **Bright Data** for reliable web scraping with **Mage AI** for pipeline orchestration gives you:
+We started with a problem: getting structured, reliable Amazon data without building and maintaining scrapers. The Bright Data APIs solved that -- two API calls replace what would otherwise be weeks of scraper development and an ongoing maintenance burden. Mage AI gave us a way to chain those calls into a production pipeline with branching execution, retries, and scheduling. And Gemini added a layer of analysis that star ratings alone can't provide.
 
-- **Reliable data collection** - No more blocked requests or broken scrapers
-- **Automated pipelines** - Visual editor, built-in scheduling, easy monitoring
-- **Historical tracking** - Build valuable datasets over time
-- **Enterprise scale** - Handle thousands of products across categories
-- **Fast iteration** - Change keywords without touching code
+**Get started:**
 
-The infrastructure complexity is handled for you, so you can focus on extracting value from the data.
+1. [Sign up for Bright Data](https://brightdata.com) (free trial) and grab your API token from [Account Settings](https://brightdata.com/cp/setting/users)
+2. Clone: `git clone https://github.com/brightdata/mage-brightdata-demo.git`
+3. Add your keys to `.env` and run `docker-compose up -d`
+4. Run the pipeline at `http://localhost:6789`
+5. See the dashboard at `http://localhost:8501`
 
-### Get Started
+The [Scrapers APIs](https://brightdata.com/products/web-scraper/amazon) work with any Amazon marketplace and support dozens of other e-commerce sites. Swap the dataset IDs and you can monitor any product category on any supported platform.
 
-1. Clone the repo: `git clone https://github.com/luminati-io/mage-brightdata-demo.git`
-2. Add your Bright Data API token
-3. Run `docker-compose up -d`
-4. Open http://localhost:6789 and run the pipeline
+### Resources
 
----
-
-## Resources
-
+- [Demo Repository](https://github.com/brightdata/mage-brightdata-demo)
+- [Bright Data Scrapers APIs](https://brightdata.com/products/web-scraper/amazon)
+- [Bright Data Pricing](https://brightdata.com/pricing/web-scraper)
 - [Mage AI Documentation](https://docs.mage.ai)
 - [Mage AI GitHub](https://github.com/mage-ai/mage-ai)
-- [Bright Data Documentation](https://docs.brightdata.com)
-- [Amazon Web Scraper API](https://brightdata.com/products/web-scraper/amazon)
-- [Demo Repository](https://github.com/luminati-io/mage-brightdata-demo)
 
 ---
 
-## Screenshots Reference
-
-To complete this blog post, capture these screenshots from your running Mage AI instance:
-
-| Screenshot | Description | Filename |
-|------------|-------------|----------|
-| Pipeline editor | Show the visual editor with connected blocks | `mage-pipeline-editor.png` |
-| Mage home | Dashboard with pipelines list | `mage-home.png` |
-| Create data loader | Adding a new block | `create-data-loader.png` |
-| Transformer preview | Data preview pane showing output | `transformer-preview.png` |
-| Complete pipeline | All blocks connected | `complete-pipeline.png` |
-| Pipeline variables | Variables configuration UI | `pipeline-variables.png` |
-| Pipeline running | Execution in progress | `pipeline-running.png` |
-| Pipeline complete | Successful run (green blocks) | `pipeline-complete.png` |
-| Schedule trigger | Trigger configuration | `schedule-trigger.png` |
-| Data preview | Sample scraped data | `data-preview.png` |
-
-Create a `screenshots/` folder in the repo and add these images.
-
----
-
-*Have questions? Open an issue on the [GitHub repo](https://github.com/luminati-io/mage-brightdata-demo).*
+*Have questions? Open an issue on the [GitHub repo](https://github.com/brightdata/mage-brightdata-demo).*

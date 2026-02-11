@@ -2,7 +2,7 @@
 Amazon Product Discovery using Bright Data Web Scraper API.
 
 Discovers products by keywords and returns structured product data
-including title, price, rating, reviews, and 50+ other fields.
+including title, price, rating, reviews, seller info, and more.
 """
 
 import os
@@ -87,7 +87,20 @@ def discover_amazon_products(
             params={"format": "json"}
         )
 
-        data = snapshot_response.json()
+        # Handle both JSON array and NDJSON (newline-delimited JSON) responses
+        try:
+            data = snapshot_response.json()
+        except Exception:
+            import json as _json
+            lines = snapshot_response.text.strip().split('\n')
+            data = []
+            for line in lines:
+                line = line.strip()
+                if line:
+                    try:
+                        data.append(_json.loads(line))
+                    except _json.JSONDecodeError:
+                        continue
 
         # Check if we got results (list of products)
         if isinstance(data, list):
@@ -113,8 +126,8 @@ def load_data(*args, **kwargs) -> pd.DataFrame:
     Load Amazon product data by discovering products via keywords.
 
     Pipeline variables:
-        keywords: List of search keywords (default: ["wireless earbuds", "phone case"])
-        limit_per_keyword: Max products per keyword (default: 40)
+        keywords: List of search keywords (default: ["laptop stand", "wireless earbuds"])
+        limit_per_keyword: Max products per keyword (default: 10)
     """
     api_token = os.getenv('BRIGHT_DATA_API_TOKEN')
 
@@ -123,11 +136,11 @@ def load_data(*args, **kwargs) -> pd.DataFrame:
 
     # Get keywords from pipeline variables or use defaults
     keywords = kwargs.get('keywords', [
+        "laptop stand",
         "wireless earbuds",
-        "phone case",
     ])
 
-    limit_per_keyword = kwargs.get('limit_per_keyword', 40)
+    limit_per_keyword = kwargs.get('limit_per_keyword', 10)
 
     # Discover products
     products = discover_amazon_products(
@@ -166,7 +179,7 @@ def load_data(*args, **kwargs) -> pd.DataFrame:
     # Show sample
     if 'title' in df.columns:
         print("\nSample products:")
-        for i, row in df.head(3).iterrows():
+        for _, row in df.head(3).iterrows():
             title = row.get('title', 'N/A')[:50]
             price = row.get('final_price') or row.get('initial_price', 'N/A')
             rating = row.get('rating', 'N/A')
@@ -177,7 +190,24 @@ def load_data(*args, **kwargs) -> pd.DataFrame:
 
 @test
 def test_output(output, *args) -> None:
-    """Validate output."""
+    """Validate Bright Data product discovery results."""
     assert output is not None, 'Output is undefined'
-    assert len(output) > 0, 'No products found'
-    assert 'title' in output.columns or 'asin' in output.columns, 'Missing product identifiers'
+    assert len(output) > 0, 'No products discovered -- check BRIGHT_DATA_API_TOKEN and keywords'
+
+    # Required columns from Bright Data Amazon Products API
+    assert 'title' in output.columns, 'Missing title column -- API response format may have changed'
+    assert 'url' in output.columns, 'Missing url column -- needed for review collection downstream'
+
+    # Data quality: no empty titles
+    assert output['title'].notna().all(), f'Found {output["title"].isna().sum()} products with missing titles'
+
+    # Data quality: prices should be numeric and positive where present
+    if 'final_price' in output.columns:
+        prices = pd.to_numeric(output['final_price'], errors='coerce').dropna()
+        if len(prices) > 0:
+            assert (prices >= 0).all(), 'Found negative prices in product data'
+
+    # Data quality: no duplicate ASINs (each product should be unique)
+    if 'asin' in output.columns:
+        dupes = output['asin'].dropna().duplicated().sum()
+        assert dupes == 0, f'Found {dupes} duplicate ASINs -- Bright Data returned duplicates'

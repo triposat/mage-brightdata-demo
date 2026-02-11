@@ -4,102 +4,50 @@
 [![Mage AI](https://img.shields.io/badge/Mage%20AI-Pipeline-purple)](https://www.mage.ai/)
 [![Bright Data](https://img.shields.io/badge/Bright%20Data-Web%20Scraping-blue)](https://brightdata.com/)
 
-A production-ready pipeline that combines **multiple Bright Data APIs** with **Mage AI orchestration** to build an Amazon product intelligence system.
-
-## What This Demo Shows
-
-**The key insight:** This demo uses **TWO different Bright Data APIs** in one pipeline, orchestrated by Mage AI.
-
-| Stage | Bright Data API | What It Does |
-|-------|-----------------|--------------|
-| 1 | Amazon Products API | Discover products by keyword |
-| 2 | Amazon Reviews API | Collect reviews for top products |
-
-**Mage AI orchestrates:**
-- Passing data between API calls
-- Transforming and enriching data
-- Analyzing review sentiment
-- Storing to PostgreSQL
-- Generating insights + Slack alerts
-
-## Pipeline Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           MAGE AI PIPELINE                                   │
-│                                                                              │
-│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────────┐  │
-│  │ Bright Data     │    │ Process &       │    │ Bright Data             │  │
-│  │ Products API    │───▶│ Enrich          │───▶│ Reviews API             │  │
-│  │                 │    │                 │    │ (top 5 products)        │  │
-│  │ "keyboard" →    │    │ + price tiers   │    │                         │  │
-│  │ 15 products     │    │ + discounts     │    │ → 50+ reviews           │  │
-│  └─────────────────┘    └─────────────────┘    └───────────┬─────────────┘  │
-│                                │                           │                 │
-│                                │                           ▼                 │
-│                                │                  ┌─────────────────────┐   │
-│                                │                  │ Analyze Reviews     │   │
-│                                │                  │ + sentiment         │   │
-│                                │                  │ + negative keywords │   │
-│                                │                  │ + trends            │   │
-│                                │                  └───────────┬─────────┘   │
-│                                │                              │              │
-│                                ▼                              ▼              │
-│                    ┌─────────────────────┐      ┌─────────────────────────┐ │
-│                    │ PostgreSQL          │      │ Intelligence Report     │ │
-│                    │ (products table)    │      │ + Slack Alert           │ │
-│                    └─────────────────────┘      └─────────────────────────┘ │
-│                                                                              │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
-
-## Why This Combination Makes Sense
-
-| Without Mage AI | With Mage AI |
-|-----------------|--------------|
-| Call Products API manually | Automated daily |
-| Call Reviews API separately | Chained automatically |
-| No data transformation | Price tiers, sentiment analysis |
-| No historical tracking | PostgreSQL storage |
-| No alerts | Slack notifications |
+A production-ready pipeline that chains **two Bright Data Scrapers APIs** with **Mage AI**, **Google Gemini AI**, and **PostgreSQL** to build Amazon product intelligence -- from product discovery to AI-powered review analysis, visualized on a live **Streamlit dashboard**.
 
 ## Quick Start
 
-### Prerequisites
-- Docker & Docker Compose
-- [Bright Data account](https://brightdata.com) with API token
-
-### Setup
-
 ```bash
-# Clone repository
-git clone https://github.com/luminati-io/mage-brightdata-demo.git
+git clone https://github.com/brightdata/mage-brightdata-demo.git
 cd mage-brightdata-demo
-
-# Configure environment
 cp .env.example .env
-# Edit .env and add your BRIGHT_DATA_API_TOKEN
-
-# Optional: Add Slack webhook for alerts
-# SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
-
-# Start services
+# Add your BRIGHT_DATA_API_TOKEN and GEMINI_API_KEY to .env
 docker-compose up -d
-
-# Open Mage AI
-open http://localhost:6789
 ```
 
-### Run the Pipeline
+Open `http://localhost:6789`, run the pipeline, then see results at `http://localhost:8501`.
 
-1. Navigate to **Pipelines** → **amazon_product_intelligence**
-2. Click **Run pipeline once**
-3. Watch the stages execute:
-   - Products discovered
-   - Data transformed
-   - Reviews collected
-   - Sentiment analyzed
-   - Report generated
+**Prerequisites:** Docker, a [Bright Data](https://brightdata.com) API token, and a [Gemini API key](https://aistudio.google.com/apikey) (free tier works).
+
+## How It Works
+
+The pipeline has 6 blocks across two parallel branches:
+
+| Block | Type | What It Does |
+|-------|------|--------------|
+| `discover_products` | Data Loader | Bright Data Products API -- discovers products by keyword |
+| `process_products` | Transformer | Enriches data with price tiers, discounts, rating categories |
+| `export_products_to_db` | Data Exporter | Stores products in PostgreSQL + CSV backup |
+| `collect_reviews` | Data Loader | Bright Data Reviews API -- collects reviews for top products |
+| `analyze_reviews` | Transformer | Gemini AI sentiment analysis, issue & theme extraction |
+| `export_reviews_to_db` | Data Exporter | Stores analyzed reviews in PostgreSQL + CSV backup |
+
+After processing products, the pipeline **branches**: the left branch exports products to PostgreSQL immediately, while the right branch simultaneously collects reviews, runs AI analysis, and exports results. If review collection fails, product data is already safe.
+
+## Sample Output
+
+```
+20 products for "laptop stand" + "wireless earbuds"
+├── Wireless Earbuds, Bluetooth 5.4  | $19.83 | 4.5★ | 52,455 reviews
+├── Nulaxy Aluminum Laptop Stand     | $13.99 | 4.8★ | 36,081 reviews
+├── Raycon Everyday Classic Earbuds  | $79.99 | 4.3★ | 29,199 reviews
+├── BESIGN LS03 Laptop Stand         | $16.99 | 4.8★ | 22,785 reviews
+└── ... (16 more)
+
+Sentiment (Gemini AI): 85% Positive, 9% Neutral, 6% Negative
+Top Themes: value for money (53), sound quality (50), battery life (29), comfort (25)
+```
 
 ## Pipeline Variables
 
@@ -107,118 +55,51 @@ Configure without changing code:
 
 ```yaml
 variables:
-  # What to search
   keywords:
-    - mechanical keyboard
-  limit_per_keyword: 15
-
-  # Review collection
-  top_n_products: 5       # Get reviews for top N products
-  sort_by: reviews_count  # Sort by this field
-
-  # Alerts
-  negative_review_alert_pct: 20  # Alert if >20% negative
+    - laptop stand
+    - wireless earbuds
+  limit_per_keyword: 10
+  top_n_products: 4
+  reviews_per_product: 25
+  sort_by: reviews_count
 ```
-
-## Sample Output
-
-### Products Discovered
-```
-15 products for "mechanical keyboard"
-├── Logitech G Pro X     | $149.99 | 4.7★ | 12,456 reviews
-├── Keychron K2          | $89.00  | 4.5★ | 8,234 reviews
-├── RK Royal Kludge      | $42.99  | 4.4★ | 45,678 reviews
-└── ...
-```
-
-### Review Analysis
-```
-Reviews Analyzed: 127
-Average Rating: 4.3
-Negative Reviews: 12%
-
-Top Negative Keywords:
-  - 'stopped working': 8 mentions
-  - 'keys stuck': 5 mentions
-  - 'cheap plastic': 4 mentions
-```
-
-### Slack Alert
-> **Amazon Product Intelligence Report**
-> - Products Analyzed: 15
-> - Reviews Analyzed: 127
-> - Avg Rating: 4.3
-> - Negative Reviews: 12%
 
 ## Project Structure
 
 ```
 mage-brightdata-demo/
-├── docker-compose.yml
-├── .env.example
-│
+├── docker-compose.yml          # Mage AI + PostgreSQL + Dashboard
+├── dashboard.py                # Streamlit dashboard
+├── .env.example                # Environment variable template
+├── requirements.txt            # Python dependencies
+├── blog-post.md                # Step-by-step tutorial
 └── mage_project/
     ├── data_loaders/
-    │   ├── amazon_product_discovery.py   # Products API
-    │   └── amazon_reviews_collector.py   # Reviews API
-    │
+    │   ├── amazon_product_discovery.py    # Bright Data Products API
+    │   └── amazon_reviews_collector.py    # Bright Data Reviews API
     ├── transformers/
-    │   ├── process_amazon_products.py    # Product enrichment
-    │   └── analyze_reviews.py            # Sentiment analysis
-    │
+    │   ├── process_amazon_products.py     # Product enrichment
+    │   └── analyze_reviews.py             # Gemini AI (3-model rotation)
     ├── data_exporters/
-    │   ├── export_amazon_to_postgres.py  # Store products
-    │   ├── export_reviews_to_postgres.py # Store reviews
-    │   └── generate_insights_report.py   # Report + Slack
-    │
+    │   ├── export_products_to_db.py       # Products → PostgreSQL + CSV
+    │   └── export_reviews_to_db.py        # Reviews → PostgreSQL + CSV
     └── pipelines/
-        └── amazon_product_intelligence/  # Main pipeline
+        └── amazon_product_intelligence/   # Pipeline config
 ```
 
 ## Bright Data APIs Used
 
 | API | Dataset ID | Purpose |
 |-----|------------|---------|
-| Amazon Products - Discover by keyword | `gd_l7q7dkf244hwjntr0` | Find products |
-| Amazon Reviews - Collect by URL | `gd_le8e811kzy4ggddlq` | Get reviews |
-
-## Enterprise Use Cases
-
-| Use Case | How This Pipeline Helps |
-|----------|-------------------------|
-| **Product Monitoring** | Track your products' reviews over time |
-| **Competitor Analysis** | Monitor competitor product sentiment |
-| **Quality Alerts** | Get notified when negative reviews spike |
-| **Market Research** | Understand what customers complain about |
-
-## Scheduling
-
-Set up automated daily runs:
-
-1. Go to **Triggers** in Mage AI
-2. Create **Schedule** trigger
-3. Set to run daily at 6 AM
-4. Enable
-
-Now you get daily intelligence automatically.
-
-## Tech Stack
-
-- **[Mage AI](https://www.mage.ai/)** - Pipeline orchestration
-- **[Bright Data](https://brightdata.com/)** - Web scraping APIs
-- **[PostgreSQL](https://www.postgresql.org/)** - Data storage
-- **[Docker](https://www.docker.com/)** - Containerization
+| [Amazon Products](https://brightdata.com/products/web-scraper/amazon) | `gd_l7q7dkf244hwjntr0` | Discover products by keyword |
+| [Amazon Reviews](https://brightdata.com/products/web-scraper/amazon) | `gd_le8e811kzy4ggddlq` | Collect reviews by product URL |
 
 ## Resources
 
+- **[Blog Post Tutorial](blog-post.md)** -- Full walkthrough of how this pipeline works
+- [Bright Data Scrapers APIs](https://brightdata.com/products/web-scraper)
 - [Mage AI Documentation](https://docs.mage.ai)
-- [Bright Data Web Scraper API](https://brightdata.com/products/web-scraper)
-- [Blog Post Tutorial](blog-post.md)
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
----
-
-Built with [Mage AI](https://www.mage.ai/) and [Bright Data](https://brightdata.com/)
+MIT -- see [LICENSE](LICENSE) for details.

@@ -12,15 +12,14 @@ venv/
 .venv/
 ENV/
 
-# Mage
-mage_project/.file_versions/
-mage_project/.variables/
-mage_project/.cache/
-mage_project/.operation_history/
-mage_project/.ssh_tunnel/
-mage_project/.logs/
-mage_project/output/
+# Mage AI runtime artifacts
+**/.file_versions/
 **/.variables/
+**/.cache/
+**/.operation_history/
+**/.ssh_tunnel/
+**/.logs/
+mage_project/output/
 *.db
 *.parquet
 
